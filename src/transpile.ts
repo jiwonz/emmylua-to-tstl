@@ -1,6 +1,11 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
+import { execFile as _execFile } from "node:child_process";
+import { promisify } from "node:util";
+import os from "node:os";
+
+const execFile = promisify(_execFile);
 
 export interface CliOptions {
   sourcePath: string;
@@ -232,11 +237,43 @@ export async function generateDeclarations(options: CliOptions): Promise<Generat
   const metaFiles = await collectMetaFiles(sourcePath);
   const warnings: string[] = [];
   const jsonRoot = options.jsonPath ? path.resolve(options.jsonPath) : undefined;
+  let effectiveJsonRoot: string | undefined = jsonRoot;
+
+  // If the caller didn't provide a JSON root, and JSON files next to .meta.lua are missing,
+  // attempt to invoke `emmylua_doc_cli` to generate JSON into a temporary directory.
+  if (!effectiveJsonRoot) {
+    let allJsonExist = true;
+    for (const metaFile of metaFiles) {
+      const candidate = metaFile.replace(/\.meta\.lua$/i, ".json");
+      try {
+        await fs.access(candidate);
+      } catch {
+        allJsonExist = false;
+        break;
+      }
+    }
+
+    if (!allJsonExist) {
+      const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "emmylua-doc-"));
+      try {
+        // Try to run emmylua_doc_cli against the source root, emitting JSON into tmpDir.
+        // This requires `emmylua_doc_cli` to be on PATH. If it fails, surface a helpful error.
+        await execFile("emmylua_doc_cli", ["--out", tmpDir, sourceRoot], { cwd: sourceRoot });
+        effectiveJsonRoot = tmpDir;
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        throw new Error(
+          `Could not generate JSON via 'emmylua_doc_cli': ${errorMessage}. ` +
+          "Install 'emmylua_doc_cli' or provide pre-generated JSON via --json <path>.",
+        );
+      }
+    }
+  }
   const unresolvedTypeMode = options.unresolvedTypeMode ?? "nonstrict";
 
   const documents = await Promise.all(
     metaFiles.map(async (metaFile) => {
-      const jsonPath = await resolveJsonPath({ metaFile, sourceRoot, jsonRoot });
+      const jsonPath = await resolveJsonPath({ metaFile, sourceRoot, jsonRoot: effectiveJsonRoot });
       const jsonText = await fs.readFile(jsonPath, "utf8");
       const document = JSON.parse(jsonText) as MetaDocument;
       return { metaFile, jsonPath, document };
@@ -341,6 +378,11 @@ function parseArgs(argv: string[]): { help: boolean; options: CliOptions } {
       continue;
     }
 
+    if (argument === "-o") {
+      outPath = requireValue("-o", argv, ++index);
+      continue;
+    }
+
     if (argument === "--unresolved-type") {
       const value = requireValue("--unresolved-type", argv, ++index);
       if (value !== "strict" && value !== "nonstrict" && value !== "any" && value !== "alias-any" && value !== "any-bare" && value !== "any-all") {
@@ -387,11 +429,10 @@ function printHelp(): void {
 emmylua-to-tstl
 
 Usage:
-  emmylua-to-tstl [source] [--json <file-or-dir>] [--out <file>] [--unresolved-type <strict|nonstrict|any|alias-any|any-bare|any-all>]
+  emmylua-to-tstl <source>.meta.lua|<source-dir> [--out <file>] [--unresolved-type <strict|nonstrict|any|alias-any|any-bare|any-all>]
 
 Options:
-  --json <path>   Parsed emmylua_doc_cli JSON file or directory
-  --out <path>    Output .d.ts file path
+  --out, -o <path> Output .d.ts file path
   --unresolved-type <mode>
                   How to handle unresolved type names:
                   strict | nonstrict (default) | any | alias-any | any-bare | any-all
@@ -399,7 +440,7 @@ Options:
 
 Examples:
   emmylua-to-tstl sample --out dist/example_types.d.ts
-  emmylua-to-tstl sample/example_types.meta.lua --json sample/example_types.json
+  emmylua-to-tstl sample/example_types.meta.lua --out sample/example_types.d.ts
   emmylua-to-tstl sample --out sample/example_types.d.ts --unresolved-type strict
   emmylua-to-tstl sample --out sample/example_types.d.ts --unresolved-type alias-any
   emmylua-to-tstl sample --out sample/example_types.d.ts --unresolved-type any-bare
