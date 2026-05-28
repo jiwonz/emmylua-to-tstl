@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { generateDeclarations } from "./transpile.js";
+import { collectMetaFiles, generateDeclarations, runCli } from "./transpile.js";
 
 interface TestMetaDocument {
   modules?: unknown[];
@@ -12,12 +12,15 @@ interface TestMetaDocument {
   globals?: unknown[];
 }
 
-async function createFixture(document: TestMetaDocument): Promise<string> {
+async function createFixture(
+  document: TestMetaDocument,
+  fileName = "fixture.lua",
+): Promise<string> {
   const fixtureRoot = await mkdtemp(
     path.join(os.tmpdir(), "emmylua-to-tstl-test-"),
   );
-  const metaPath = path.join(fixtureRoot, "fixture.lua");
-  const jsonPath = path.join(fixtureRoot, "fixture.json");
+  const metaPath = path.join(fixtureRoot, fileName);
+  const jsonPath = metaPath.replace(/\.meta\.lua$/i, ".json").replace(/\.lua$/i, ".json");
 
   await writeFile(metaPath, "---@meta\n", "utf8");
   await writeFile(jsonPath, JSON.stringify(document, null, 2), "utf8");
@@ -25,11 +28,26 @@ async function createFixture(document: TestMetaDocument): Promise<string> {
   return fixtureRoot;
 }
 
+async function createDirectoryFixture(files: Array<{ filePath: string; document: TestMetaDocument }>): Promise<string> {
+  const fixtureRoot = await mkdtemp(path.join(os.tmpdir(), "emmylua-to-tstl-test-"));
+
+  for (const file of files) {
+    const metaPath = path.join(fixtureRoot, file.filePath);
+    const jsonPath = metaPath.replace(/\.lua$/i, ".json");
+    await mkdir(path.dirname(metaPath), { recursive: true });
+    await writeFile(metaPath, "---@meta\n", "utf8");
+    await writeFile(jsonPath, JSON.stringify(file.document, null, 2), "utf8");
+  }
+
+  return fixtureRoot;
+}
+
 async function withFixture<T>(
   document: TestMetaDocument,
   run: (fixtureRoot: string) => Promise<T>,
+  fileName = "fixture.lua",
 ): Promise<T> {
-  const fixtureRoot = await createFixture(document);
+  const fixtureRoot = await createFixture(document, fileName);
 
   try {
     return await run(fixtureRoot);
@@ -43,41 +61,68 @@ function buildBaseDocument(): TestMetaDocument {
     types: [
       {
         type: "class",
-        name: "Foo",
+        name: "DemoClass",
         members: [
           {
             type: "field",
-            name: "quat",
-            typ: "Quternion",
+            name: "unknownValue",
+            typ: "MissingType",
           },
           {
             type: "field",
-            name: "frameworkThing",
-            typ: "VFramework.VObject",
+            name: "serviceThing",
+            typ: "DemoNamespace.DemoObject",
           },
           {
             type: "fn",
-            name: "color",
+            name: "makeValue",
             is_meth: false,
             params: [],
-            returns: [{ typ: "Color" }],
+            returns: [{ typ: "DemoColor" }],
           },
           {
             type: "fn",
-            name: "color",
+            name: "makeValue",
             is_meth: false,
             params: [{ name: "hex", typ: "string" }],
-            returns: [{ typ: "Color" }],
+            returns: [{ typ: "DemoColor" }],
           },
         ],
       },
       {
         type: "class",
-        name: "Color",
+        name: "DemoColor",
         members: [],
       },
     ],
     globals: [],
+  };
+}
+
+function buildSecondaryDocument(): TestMetaDocument {
+  return {
+    types: [
+      {
+        type: "class",
+        name: "AuxClass",
+        members: [
+          {
+            type: "field",
+            name: "value",
+            typ: "number",
+          },
+        ],
+      },
+    ],
+    globals: [
+      {
+        type: "fn",
+        name: "doThing",
+        is_meth: false,
+        params: [{ name: "input", typ: "string" }],
+        returns: [{ typ: "void" }],
+      },
+    ],
   };
 }
 
@@ -93,12 +138,12 @@ test("nonstrict keeps unresolved names and emits static overloads", {
     });
 
     assert.ok(
-      result.text.includes(`declare class Foo {
+      result.text.includes(`declare class DemoClass {
     private constructor();
-    frameworkThing: VFramework.VObject;
-    quat: Quternion;
-    static color(): Color;
-    static color(hex: string): Color;
+    serviceThing: DemoNamespace.DemoObject;
+    unknownValue: MissingType;
+    static makeValue(): DemoColor;
+    static makeValue(hex: string): DemoColor;
 }`),
     );
     assert.equal(result.warnings.length, 0);
@@ -117,7 +162,7 @@ test("strict fails conversion when unresolved types are present", {
           outPath: undefined,
           unresolvedTypeMode: "strict",
         }),
-      /Strict unresolved type check failed[\s\S]*Quternion/,
+      /Strict unresolved type check failed[\s\S]*MissingType/,
     );
   });
 });
@@ -134,16 +179,16 @@ test("any mode replaces unresolved bare types with any", {
     });
 
     assert.ok(
-      result.text.includes(`declare class Foo {
+      result.text.includes(`declare class DemoClass {
     private constructor();
-    frameworkThing: VFramework.VObject;
-    quat: any;
-    static color(): Color;
-    static color(hex: string): Color;
+    serviceThing: DemoNamespace.DemoObject;
+    unknownValue: any;
+    static makeValue(): DemoColor;
+    static makeValue(hex: string): DemoColor;
 }`),
     );
     assert.deepEqual(result.warnings, [
-      "Unresolved bare type 'Quternion' encountered; replaced with 'any' due to --unresolved-type any.",
+      "Unresolved bare type 'MissingType' encountered; replaced with 'any' due to --unresolved-type any.",
     ]);
   });
 });
@@ -160,17 +205,17 @@ test("any-all mode replaces qualified unresolved types with any", {
     });
 
     assert.ok(
-      result.text.includes(`declare class Foo {
+      result.text.includes(`declare class DemoClass {
     private constructor();
-    frameworkThing: any;
-    quat: any;
-    static color(): Color;
-    static color(hex: string): Color;
+    serviceThing: any;
+    unknownValue: any;
+    static makeValue(): DemoColor;
+    static makeValue(hex: string): DemoColor;
 }`),
     );
     assert.deepEqual(result.warnings, [
-      "Unresolved type 'VFramework.VObject' encountered; replaced with 'any' due to --unresolved-type any-all.",
-      "Unresolved type 'Quternion' encountered; replaced with 'any' due to --unresolved-type any-all.",
+      "Unresolved type 'DemoNamespace.DemoObject' encountered; replaced with 'any' due to --unresolved-type any-all.",
+      "Unresolved type 'MissingType' encountered; replaced with 'any' due to --unresolved-type any-all.",
     ]);
   });
 });
@@ -186,10 +231,10 @@ test("any-bare matches bare-name fallback behavior", {
       unresolvedTypeMode: "any-bare",
     });
 
-    assert.ok(result.text.includes("quat: any;"));
+    assert.ok(result.text.includes("unknownValue: any;"));
     assert.equal(
       result.warnings[0],
-      "Unresolved bare type 'Quternion' encountered; replaced with 'any' due to --unresolved-type any.",
+      "Unresolved bare type 'MissingType' encountered; replaced with 'any' due to --unresolved-type any.",
     );
   });
 });
@@ -205,11 +250,66 @@ test("alias-any mode preserves unresolved name and emits fallback alias", {
       unresolvedTypeMode: "alias-any",
     });
 
-    assert.ok(result.text.includes("quat: Quternion;"));
-    assert.ok(result.text.includes("declare type Quternion = any;"));
+    assert.ok(result.text.includes("unknownValue: MissingType;"));
+    assert.ok(result.text.includes("declare type MissingType = any;"));
     assert.equal(
       result.warnings[0],
-      "Unresolved bare type 'Quternion' encountered; preserving name and emitting 'declare type Quternion = any'.",
+      "Unresolved bare type 'MissingType' encountered; preserving name and emitting 'declare type MissingType = any'.",
     );
   });
+});
+
+test("collectMetaFiles walks nested lua files in a directory", {
+  concurrency: false,
+}, async () => {
+  await withFixture(buildBaseDocument(), async (fixtureRoot) => {
+    const nestedDir = path.join(fixtureRoot, "lsp-meta", "ko");
+    await mkdir(nestedDir, { recursive: true });
+    await writeFile(path.join(nestedDir, "nested.lua"), "---@meta\n", "utf8");
+    await writeFile(path.join(nestedDir, "nested.json"), JSON.stringify(buildSecondaryDocument(), null, 2), "utf8");
+    await writeFile(path.join(nestedDir, "nested-meta.meta.lua"), "---@meta\n", "utf8");
+    await writeFile(path.join(nestedDir, "nested-meta.json"), JSON.stringify(buildSecondaryDocument(), null, 2), "utf8");
+
+    const files = await collectMetaFiles(fixtureRoot);
+    assert.deepEqual(
+      files.map((file) => path.relative(fixtureRoot, file).split(path.sep).join("/")).sort(),
+      ["fixture.lua", "lsp-meta/ko/nested-meta.meta.lua", "lsp-meta/ko/nested.lua"],
+    );
+  });
+});
+
+test("direct .meta.lua input is accepted and generates declarations", {
+  concurrency: false,
+}, async () => {
+  await withFixture(buildBaseDocument(), async (fixtureRoot) => {
+    const result = await generateDeclarations({
+      sourcePath: path.join(fixtureRoot, "fixture.meta.lua"),
+      jsonPath: undefined,
+      outPath: undefined,
+      unresolvedTypeMode: "nonstrict",
+    });
+
+    assert.ok(result.text.includes("declare class DemoClass"));
+    assert.ok(result.text.includes("unknownValue: MissingType;"));
+  }, "fixture.meta.lua");
+});
+
+test("directory input with -o out writes a combined d.ts file", {
+  concurrency: false,
+}, async () => {
+  const fixtureRoot = await createDirectoryFixture([
+    { filePath: path.join("lsp-meta", "ko", "DemoNamespace.lua"), document: buildBaseDocument() },
+  ]);
+  const outFile = path.join(fixtureRoot, "generated", "definitions.d.ts");
+
+  try {
+    const exitCode = await runCli([path.join(fixtureRoot, "lsp-meta", "ko"), "-o", outFile]);
+    assert.equal(exitCode, 0);
+
+    const text = await readFile(outFile, "utf8");
+    assert.ok(text.includes("declare class DemoClass"));
+    assert.ok(text.includes("unknownValue: MissingType;"));
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+  }
 });

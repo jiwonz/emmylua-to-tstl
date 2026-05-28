@@ -275,6 +275,7 @@ export async function generateDeclarations(
     ? path.resolve(options.jsonPath)
     : undefined;
   let effectiveJsonRoot: string | undefined = jsonRoot;
+  let generatedJsonPath: string | undefined;
 
   // If the caller didn't provide a JSON root, and JSON files next to .lua are missing,
   // attempt to invoke `emmylua_doc_cli` to generate JSON into a temporary directory.
@@ -295,10 +296,15 @@ export async function generateDeclarations(
       try {
         // Try to run emmylua_doc_cli against the source root, emitting JSON into tmpDir.
         // This requires `emmylua_doc_cli` to be on PATH. If it fails, surface a helpful error.
-        await execFile("emmylua_doc_cli", ["--output", tmpDir, sourceRoot], {
+        await execFile(
+          "emmylua_doc_cli",
+          ["--output-format", "json", "--output", tmpDir, sourceRoot],
+          {
           cwd: sourceRoot,
-        });
+          },
+        );
         effectiveJsonRoot = tmpDir;
+        generatedJsonPath = path.join(tmpDir, "doc.json");
       } catch (error: unknown) {
         const errorMessage =
           error instanceof Error ? error.message : String(error);
@@ -311,18 +317,23 @@ export async function generateDeclarations(
   }
   const unresolvedTypeMode = options.unresolvedTypeMode ?? "nonstrict";
 
-  const documents = await Promise.all(
-    metaFiles.map(async (metaFile) => {
-      const jsonPath = await resolveJsonPath({
-        metaFile,
-        sourceRoot,
-        jsonRoot: effectiveJsonRoot,
-      });
-      const jsonText = await fs.readFile(jsonPath, "utf8");
-      const document = JSON.parse(jsonText) as MetaDocument;
-      return { metaFile, jsonPath, document };
-    }),
-  );
+  const documents = generatedJsonPath
+    ? await loadAggregatedDocuments({
+        jsonPath: generatedJsonPath,
+        fallbackMetaFile: sourcePath,
+      })
+    : await Promise.all(
+        metaFiles.map(async (metaFile) => {
+          const jsonPath = await resolveJsonPath({
+            metaFile,
+            sourceRoot,
+            jsonRoot: effectiveJsonRoot,
+          });
+          const jsonText = await fs.readFile(jsonPath, "utf8");
+          const document = JSON.parse(jsonText) as MetaDocument;
+          return { metaFile, jsonPath, document };
+        }),
+      );
 
   const knownTypeNames = new Set<string>();
   for (const { document } of documents) {
@@ -406,6 +417,7 @@ export async function generateDeclarationsPerFile(
     ? path.resolve(options.jsonPath)
     : undefined;
   let effectiveJsonRoot: string | undefined = jsonRoot;
+  let generatedJsonPath: string | undefined;
 
   if (!effectiveJsonRoot) {
     let allJsonExist = true;
@@ -422,10 +434,15 @@ export async function generateDeclarationsPerFile(
     if (!allJsonExist) {
       const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "emmylua-doc-"));
       try {
-        await execFile("emmylua_doc_cli", ["--out", tmpDir, sourceRoot], {
-          cwd: sourceRoot,
-        });
+        await execFile(
+          "emmylua_doc_cli",
+          ["--output-format", "json", "--output", tmpDir, sourceRoot],
+          {
+            cwd: sourceRoot,
+          },
+        );
         effectiveJsonRoot = tmpDir;
+        generatedJsonPath = path.join(tmpDir, "doc.json");
       } catch (error: unknown) {
         const errorMessage =
           error instanceof Error ? error.message : String(error);
@@ -437,18 +454,23 @@ export async function generateDeclarationsPerFile(
     }
   }
 
-  const documents = await Promise.all(
-    metaFiles.map(async (metaFile) => {
-      const jsonPath = await resolveJsonPath({
-        metaFile,
-        sourceRoot,
-        jsonRoot: effectiveJsonRoot,
-      });
-      const jsonText = await fs.readFile(jsonPath, "utf8");
-      const document = JSON.parse(jsonText) as MetaDocument;
-      return { metaFile, jsonPath, document };
-    }),
-  );
+  const documents = generatedJsonPath
+    ? await loadAggregatedDocuments({
+        jsonPath: generatedJsonPath,
+        fallbackMetaFile: sourcePath,
+      })
+    : await Promise.all(
+        metaFiles.map(async (metaFile) => {
+          const jsonPath = await resolveJsonPath({
+            metaFile,
+            sourceRoot,
+            jsonRoot: effectiveJsonRoot,
+          });
+          const jsonText = await fs.readFile(jsonPath, "utf8");
+          const document = JSON.parse(jsonText) as MetaDocument;
+          return { metaFile, jsonPath, document };
+        }),
+      );
 
   const knownTypeNames = new Set<string>();
   for (const { document } of documents) {
@@ -1739,10 +1761,89 @@ async function resolveJsonPath(options: {
       options.sourceRoot,
       options.metaFile,
     );
-    return path.join(options.jsonRoot, toJsonRelativePath(relativeMetaPath));
+    const directPath = path.join(
+      options.jsonRoot,
+      toJsonRelativePath(relativeMetaPath),
+    );
+
+    try {
+      await fs.access(directPath);
+      return directPath;
+    } catch {
+      const fallback = await findJsonFileByBaseName(
+        options.jsonRoot,
+        path.basename(directPath),
+      );
+      if (fallback) {
+        return fallback;
+      }
+
+      return directPath;
+    }
   }
 
   return path.resolve(options.jsonRoot);
+}
+
+async function loadAggregatedDocuments(options: {
+  jsonPath: string;
+  fallbackMetaFile: string;
+}): Promise<Array<{ metaFile: string; jsonPath: string; document: MetaDocument }>> {
+  const jsonText = await fs.readFile(options.jsonPath, "utf8");
+  const document = JSON.parse(jsonText) as MetaDocument;
+  return splitDocumentBySourceFile(document, options.fallbackMetaFile, options.jsonPath);
+}
+
+function splitDocumentBySourceFile(
+  document: MetaDocument,
+  fallbackMetaFile: string,
+  jsonPath: string,
+): Array<{ metaFile: string; jsonPath: string; document: MetaDocument }> {
+  const groups = new Map<string, MetaDocument>();
+
+  const ensureGroup = (metaFile: string): MetaDocument => {
+    const existing = groups.get(metaFile);
+    if (existing) {
+      return existing;
+    }
+
+    const created: MetaDocument = { types: [], globals: [] };
+    groups.set(metaFile, created);
+    return created;
+  };
+
+  const addToGroup = (
+    metaFile: string | undefined,
+    kind: "types" | "globals",
+    entry: MetaTypeEntry,
+  ): void => {
+    const resolvedMetaFile = metaFile ?? fallbackMetaFile;
+    ensureGroup(resolvedMetaFile)[kind]!.push(entry);
+  };
+
+  for (const entry of document.types ?? []) {
+    addToGroup(getEntrySourceFile(entry), "types", entry);
+  }
+
+  for (const entry of document.globals ?? []) {
+    addToGroup(getEntrySourceFile(entry), "globals", entry);
+  }
+
+  return [...groups.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([metaFile, groupedDocument]) => ({
+      metaFile,
+      jsonPath,
+      document: groupedDocument,
+    }));
+}
+
+function getEntrySourceFile(entry: { loc?: MetaLoc | MetaLoc[] | null }): string | undefined {
+  if (Array.isArray(entry.loc)) {
+    return entry.loc[0]?.file;
+  }
+
+  return entry.loc?.file;
 }
 
 function toJsonPath(inputPath: string): string {
@@ -1755,6 +1856,29 @@ function toJsonRelativePath(relativePath: string): string {
 
 function toJsonFileName(fileName: string): string {
   return fileName.replace(/\.meta\.lua$/i, ".json").replace(/\.lua$/i, ".json");
+}
+
+async function findJsonFileByBaseName(
+  rootDir: string,
+  fileName: string,
+): Promise<string | undefined> {
+  for (const entry of await fs.readdir(rootDir, { withFileTypes: true })) {
+    const resolved = path.join(rootDir, entry.name);
+
+    if (entry.isDirectory()) {
+      const nestedMatch = await findJsonFileByBaseName(resolved, fileName);
+      if (nestedMatch) {
+        return nestedMatch;
+      }
+      continue;
+    }
+
+    if (entry.isFile() && entry.name === fileName) {
+      return resolved;
+    }
+  }
+
+  return undefined;
 }
 
 function toValidTypeName(name: string): string {
