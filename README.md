@@ -1,6 +1,6 @@
 # emmylua-to-tstl
 
-A simple CLI to generate TypeScript ambient declarations (.d.ts) from EmmyLua `.meta.lua` metadata, useful alongside TypeScript→Lua toolchains such as [TSTL](https://typescripttolua.github.io/).
+A simple CLI to generate TypeScript ambient declarations (.d.ts) from EmmyLua `.lua` metadata (and accompanying JSON produced by `emmylua_doc_cli`), useful alongside TypeScript→Lua toolchains such as [TSTL](https://typescripttolua.github.io/).
 
 ## Install
 
@@ -23,11 +23,25 @@ pnpm exec emmylua-to-tstl sample --out typings/example_types.d.ts --unresolved-t
 pnpm exec emmylua-to-tstl sample -o typings/example_types.d.ts
 ```
 
+```bash
+# emit one .d.ts per input `.lua` under `dist/typings`
+pnpm exec emmylua-to-tstl sample --out-dir dist/typings
+
+# include/exclude examples
+pnpm exec emmylua-to-tstl sample --include "**/core/*.lua" --exclude "**/test-*.lua" --out-dir dist/typings
+```
+
 ## Configuration
 
 - `--out <file>`: output `.d.ts` file (defaults to stdout)
 - `-o <file>`: short alias for `--out`
 - `--unresolved-type <mode>`: `strict|nonstrict|any|alias-any|any-bare|any-all` (default: `nonstrict`)
+ - `--out <file>`: output `.d.ts` file (defaults to stdout)
+ - `-o <file>`: short alias for `--out`
+ - `--out-dir <dir>`: emit one `.d.ts` per input `.lua` under `<dir>` (preserves relative paths)
+ - `--include <glob>`: include only files matching the glob (may be repeated)
+ - `--exclude <glob>`: exclude files matching the glob (may be repeated)
+ - `--unresolved-type <mode>`: `strict|nonstrict|any|alias-any|any-bare|any-all` (default: `nonstrict`)
 
 ## Unresolved type modes
 
@@ -42,6 +56,9 @@ pnpm exec emmylua-to-tstl sample -o typings/example_types.d.ts
 
 - The tool reads `.meta.lua` files or directories containing them.
 - Warnings are printed to stderr; generated declarations go to stdout or the `--out` file.
+ - The tool reads `.lua` files or directories containing them (recursively). For each `X.lua` it expects `X.json` next to it (or will run `emmylua_doc_cli` to generate JSON when needed).
+ - When a directory is provided, the tool recursively discovers `.lua` files; use `--include`/`--exclude` to restrict selection.
+ - Warnings are printed to stderr; generated declarations go to stdout, the `--out` file, or per-file under `--out-dir`.
 
 ## Development
 

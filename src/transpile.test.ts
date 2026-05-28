@@ -13,8 +13,10 @@ interface TestMetaDocument {
 }
 
 async function createFixture(document: TestMetaDocument): Promise<string> {
-  const fixtureRoot = await mkdtemp(path.join(os.tmpdir(), "emmylua-to-tstl-test-"));
-  const metaPath = path.join(fixtureRoot, "fixture.meta.lua");
+  const fixtureRoot = await mkdtemp(
+    path.join(os.tmpdir(), "emmylua-to-tstl-test-"),
+  );
+  const metaPath = path.join(fixtureRoot, "fixture.lua");
   const jsonPath = path.join(fixtureRoot, "fixture.json");
 
   await writeFile(metaPath, "---@meta\n", "utf8");
@@ -23,7 +25,10 @@ async function createFixture(document: TestMetaDocument): Promise<string> {
   return fixtureRoot;
 }
 
-async function withFixture<T>(document: TestMetaDocument, run: (fixtureRoot: string) => Promise<T>): Promise<T> {
+async function withFixture<T>(
+  document: TestMetaDocument,
+  run: (fixtureRoot: string) => Promise<T>,
+): Promise<T> {
   const fixtureRoot = await createFixture(document);
 
   try {
@@ -76,7 +81,9 @@ function buildBaseDocument(): TestMetaDocument {
   };
 }
 
-test("nonstrict keeps unresolved names and emits static overloads", { concurrency: false }, async () => {
+test("nonstrict keeps unresolved names and emits static overloads", {
+  concurrency: false,
+}, async () => {
   await withFixture(buildBaseDocument(), async (fixtureRoot) => {
     const result = await generateDeclarations({
       sourcePath: fixtureRoot,
@@ -98,7 +105,9 @@ test("nonstrict keeps unresolved names and emits static overloads", { concurrenc
   });
 });
 
-test("strict fails conversion when unresolved types are present", { concurrency: false }, async () => {
+test("strict fails conversion when unresolved types are present", {
+  concurrency: false,
+}, async () => {
   await withFixture(buildBaseDocument(), async (fixtureRoot) => {
     await assert.rejects(
       () =>
@@ -113,7 +122,9 @@ test("strict fails conversion when unresolved types are present", { concurrency:
   });
 });
 
-test("any mode replaces unresolved bare types with any", { concurrency: false }, async () => {
+test("any mode replaces unresolved bare types with any", {
+  concurrency: false,
+}, async () => {
   await withFixture(buildBaseDocument(), async (fixtureRoot) => {
     const result = await generateDeclarations({
       sourcePath: fixtureRoot,
@@ -131,11 +142,15 @@ test("any mode replaces unresolved bare types with any", { concurrency: false },
     static color(hex: string): Color;
 }`),
     );
-    assert.deepEqual(result.warnings, ["Unresolved bare type 'Quternion' encountered; replaced with 'any' due to --unresolved-type any."]);
+    assert.deepEqual(result.warnings, [
+      "Unresolved bare type 'Quternion' encountered; replaced with 'any' due to --unresolved-type any.",
+    ]);
   });
 });
 
-test("any-all mode replaces qualified unresolved types with any", { concurrency: false }, async () => {
+test("any-all mode replaces qualified unresolved types with any", {
+  concurrency: false,
+}, async () => {
   await withFixture(buildBaseDocument(), async (fixtureRoot) => {
     const result = await generateDeclarations({
       sourcePath: fixtureRoot,
@@ -160,7 +175,9 @@ test("any-all mode replaces qualified unresolved types with any", { concurrency:
   });
 });
 
-test("any-bare matches bare-name fallback behavior", { concurrency: false }, async () => {
+test("any-bare matches bare-name fallback behavior", {
+  concurrency: false,
+}, async () => {
   await withFixture(buildBaseDocument(), async (fixtureRoot) => {
     const result = await generateDeclarations({
       sourcePath: fixtureRoot,
@@ -170,11 +187,16 @@ test("any-bare matches bare-name fallback behavior", { concurrency: false }, asy
     });
 
     assert.ok(result.text.includes("quat: any;"));
-    assert.equal(result.warnings[0], "Unresolved bare type 'Quternion' encountered; replaced with 'any' due to --unresolved-type any.");
+    assert.equal(
+      result.warnings[0],
+      "Unresolved bare type 'Quternion' encountered; replaced with 'any' due to --unresolved-type any.",
+    );
   });
 });
 
-test("alias-any mode preserves unresolved name and emits fallback alias", { concurrency: false }, async () => {
+test("alias-any mode preserves unresolved name and emits fallback alias", {
+  concurrency: false,
+}, async () => {
   await withFixture(buildBaseDocument(), async (fixtureRoot) => {
     const result = await generateDeclarations({
       sourcePath: fixtureRoot,
@@ -185,6 +207,9 @@ test("alias-any mode preserves unresolved name and emits fallback alias", { conc
 
     assert.ok(result.text.includes("quat: Quternion;"));
     assert.ok(result.text.includes("declare type Quternion = any;"));
-    assert.equal(result.warnings[0], "Unresolved bare type 'Quternion' encountered; preserving name and emitting 'declare type Quternion = any'.");
+    assert.equal(
+      result.warnings[0],
+      "Unresolved bare type 'Quternion' encountered; preserving name and emitting 'declare type Quternion = any'.",
+    );
   });
 });
