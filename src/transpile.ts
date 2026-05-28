@@ -281,7 +281,7 @@ export async function generateDeclarations(
   if (!effectiveJsonRoot) {
     let allJsonExist = true;
     for (const metaFile of metaFiles) {
-      const candidate = metaFile.replace(/\.lua$/i, ".json");
+      const candidate = toJsonPath(metaFile);
       try {
         await fs.access(candidate);
       } catch {
@@ -1730,7 +1730,7 @@ async function resolveJsonPath(options: {
   jsonRoot: string | undefined;
 }): Promise<string> {
   if (!options.jsonRoot) {
-    return options.metaFile.replace(/\.lua$/i, ".json");
+    return toJsonPath(options.metaFile);
   }
 
   const jsonStat = await fs.stat(options.jsonRoot);
@@ -1739,10 +1739,22 @@ async function resolveJsonPath(options: {
       options.sourceRoot,
       options.metaFile,
     );
-    return path.join(options.jsonRoot, relativeMetaPath.replace(/\.lua$/i, ".json"));
+    return path.join(options.jsonRoot, toJsonRelativePath(relativeMetaPath));
   }
 
   return path.resolve(options.jsonRoot);
+}
+
+function toJsonPath(inputPath: string): string {
+  return path.join(path.dirname(inputPath), toJsonFileName(path.basename(inputPath)));
+}
+
+function toJsonRelativePath(relativePath: string): string {
+  return path.join(path.dirname(relativePath), toJsonFileName(path.basename(relativePath)));
+}
+
+function toJsonFileName(fileName: string): string {
+  return fileName.replace(/\.meta\.lua$/i, ".json").replace(/\.lua$/i, ".json");
 }
 
 function toValidTypeName(name: string): string {
