@@ -295,7 +295,7 @@ export async function generateDeclarations(
       try {
         // Try to run emmylua_doc_cli against the source root, emitting JSON into tmpDir.
         // This requires `emmylua_doc_cli` to be on PATH. If it fails, surface a helpful error.
-        await execFile("emmylua_doc_cli", ["--out", tmpDir, sourceRoot], {
+        await execFile("emmylua_doc_cli", ["--output", tmpDir, sourceRoot], {
           cwd: sourceRoot,
         });
         effectiveJsonRoot = tmpDir;
