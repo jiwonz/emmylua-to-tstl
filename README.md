@@ -8,13 +8,13 @@ It uses the JSON for class and member declarations, then scans the meta Lua sour
 
 ```powershell
 pnpm build
-node dist/index.js sample --out sample/vgf_types.d.ts
+node dist/index.js sample --out sample/example_types.d.ts
 ```
 
 If you already have a single `.meta.lua` file and its JSON companion, you can point the CLI at the file instead of the folder:
 
 ```powershell
-node dist/index.js sample/vgf_types.meta.lua --json sample/vgf_types.json
+node dist/index.js sample/example_types.meta.lua --json sample/example_types.json
 ```
 
 ## Unresolved types
@@ -31,12 +31,12 @@ The CLI supports `--unresolved-type` to control how unresolved type names that c
 Examples:
 
 ```powershell
-node dist/index.js sample --out sample/vgf_types.d.ts --unresolved-type strict
-node dist/index.js sample --out sample/vgf_types.d.ts --unresolved-type nonstrict
-node dist/index.js sample --out sample/vgf_types.d.ts --unresolved-type any
-node dist/index.js sample --out sample/vgf_types.d.ts --unresolved-type alias-any
-node dist/index.js sample --out sample/vgf_types.d.ts --unresolved-type any-bare
-node dist/index.js sample --out sample/vgf_types.d.ts --unresolved-type any-all
+node dist/index.js sample --out sample/example_types.d.ts --unresolved-type strict
+node dist/index.js sample --out sample/example_types.d.ts --unresolved-type nonstrict
+node dist/index.js sample --out sample/example_types.d.ts --unresolved-type any
+node dist/index.js sample --out sample/example_types.d.ts --unresolved-type alias-any
+node dist/index.js sample --out sample/example_types.d.ts --unresolved-type any-bare
+node dist/index.js sample --out sample/example_types.d.ts --unresolved-type any-all
 ```
 
 ## Input format

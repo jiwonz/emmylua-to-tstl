@@ -398,12 +398,12 @@ Options:
   -h, --help      Show this help message
 
 Examples:
-  emmylua-to-tstl sample --out dist/vgf_types.d.ts
-  emmylua-to-tstl sample/vgf_types.meta.lua --json sample/vgf_types.json
-  emmylua-to-tstl sample --out sample/vgf_types.d.ts --unresolved-type strict
-  emmylua-to-tstl sample --out sample/vgf_types.d.ts --unresolved-type alias-any
-  emmylua-to-tstl sample --out sample/vgf_types.d.ts --unresolved-type any-bare
-  emmylua-to-tstl sample --out sample/vgf_types.d.ts --unresolved-type any-all
+  emmylua-to-tstl sample --out dist/example_types.d.ts
+  emmylua-to-tstl sample/example_types.meta.lua --json sample/example_types.json
+  emmylua-to-tstl sample --out sample/example_types.d.ts --unresolved-type strict
+  emmylua-to-tstl sample --out sample/example_types.d.ts --unresolved-type alias-any
+  emmylua-to-tstl sample --out sample/example_types.d.ts --unresolved-type any-bare
+  emmylua-to-tstl sample --out sample/example_types.d.ts --unresolved-type any-all
 `);
 }
 

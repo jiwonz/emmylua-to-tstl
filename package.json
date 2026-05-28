@@ -15,7 +15,7 @@
     "dev": "tsc -p tsconfig.json --watch",
     "test": "pnpm build && node --test dist/**/*.test.js",
     "start": "node dist/index.js",
-    "generate:sample": "node dist/index.js sample --out sample/vgf_types.d.ts",
+    "generate:sample": "node dist/index.js sample --out sample/example_types.d.ts",
     "check": "biome check .",
     "format": "biome format --write .",
     "typecheck": "tsc -p tsconfig.json --noEmit"

@@ -23,6 +23,16 @@ async function createFixture(document: TestMetaDocument): Promise<string> {
   return fixtureRoot;
 }
 
+async function withFixture<T>(document: TestMetaDocument, run: (fixtureRoot: string) => Promise<T>): Promise<T> {
+  const fixtureRoot = await createFixture(document);
+
+  try {
+    return await run(fixtureRoot);
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+  }
+}
+
 function buildBaseDocument(): TestMetaDocument {
   return {
     types: [
@@ -66,10 +76,8 @@ function buildBaseDocument(): TestMetaDocument {
   };
 }
 
-test("nonstrict keeps unresolved names and emits static overloads", async () => {
-  const fixtureRoot = await createFixture(buildBaseDocument());
-
-  try {
+test("nonstrict keeps unresolved names and emits static overloads", { concurrency: false }, async () => {
+  await withFixture(buildBaseDocument(), async (fixtureRoot) => {
     const result = await generateDeclarations({
       sourcePath: fixtureRoot,
       jsonPath: undefined,
@@ -77,19 +85,21 @@ test("nonstrict keeps unresolved names and emits static overloads", async () => 
       unresolvedTypeMode: "nonstrict",
     });
 
-    assert.match(result.text, /quat: Quternion;/);
-    assert.match(result.text, /static color\(\): Color;/);
-    assert.match(result.text, /static color\(hex: string\): Color;/);
-    assert.doesNotMatch(result.text, /static color: /);
-  } finally {
-    await rm(fixtureRoot, { recursive: true, force: true });
-  }
+    assert.ok(
+      result.text.includes(`declare class Foo {
+    private constructor();
+    frameworkThing: VFramework.VObject;
+    quat: Quternion;
+    static color(): Color;
+    static color(hex: string): Color;
+}`),
+    );
+    assert.equal(result.warnings.length, 0);
+  });
 });
 
-test("strict fails conversion when unresolved types are present", async () => {
-  const fixtureRoot = await createFixture(buildBaseDocument());
-
-  try {
+test("strict fails conversion when unresolved types are present", { concurrency: false }, async () => {
+  await withFixture(buildBaseDocument(), async (fixtureRoot) => {
     await assert.rejects(
       () =>
         generateDeclarations({
@@ -100,15 +110,11 @@ test("strict fails conversion when unresolved types are present", async () => {
         }),
       /Strict unresolved type check failed[\s\S]*Quternion/,
     );
-  } finally {
-    await rm(fixtureRoot, { recursive: true, force: true });
-  }
+  });
 });
 
-test("any mode replaces unresolved bare types with any", async () => {
-  const fixtureRoot = await createFixture(buildBaseDocument());
-
-  try {
+test("any mode replaces unresolved bare types with any", { concurrency: false }, async () => {
+  await withFixture(buildBaseDocument(), async (fixtureRoot) => {
     const result = await generateDeclarations({
       sourcePath: fixtureRoot,
       jsonPath: undefined,
@@ -116,17 +122,21 @@ test("any mode replaces unresolved bare types with any", async () => {
       unresolvedTypeMode: "any",
     });
 
-    assert.match(result.text, /quat: any;/);
-    assert.ok(result.warnings.some((warning) => warning.includes("replaced with 'any'")));
-  } finally {
-    await rm(fixtureRoot, { recursive: true, force: true });
-  }
+    assert.ok(
+      result.text.includes(`declare class Foo {
+    private constructor();
+    frameworkThing: VFramework.VObject;
+    quat: any;
+    static color(): Color;
+    static color(hex: string): Color;
+}`),
+    );
+    assert.deepEqual(result.warnings, ["Unresolved bare type 'Quternion' encountered; replaced with 'any' due to --unresolved-type any."]);
+  });
 });
 
-test("any-all mode replaces qualified unresolved types with any", async () => {
-  const fixtureRoot = await createFixture(buildBaseDocument());
-
-  try {
+test("any-all mode replaces qualified unresolved types with any", { concurrency: false }, async () => {
+  await withFixture(buildBaseDocument(), async (fixtureRoot) => {
     const result = await generateDeclarations({
       sourcePath: fixtureRoot,
       jsonPath: undefined,
@@ -134,17 +144,38 @@ test("any-all mode replaces qualified unresolved types with any", async () => {
       unresolvedTypeMode: "any-all",
     });
 
-    assert.match(result.text, /frameworkThing: any;/);
-    assert.ok(result.warnings.some((warning) => warning.includes("any-all")));
-  } finally {
-    await rm(fixtureRoot, { recursive: true, force: true });
-  }
+    assert.ok(
+      result.text.includes(`declare class Foo {
+    private constructor();
+    frameworkThing: any;
+    quat: any;
+    static color(): Color;
+    static color(hex: string): Color;
+}`),
+    );
+    assert.deepEqual(result.warnings, [
+      "Unresolved type 'VFramework.VObject' encountered; replaced with 'any' due to --unresolved-type any-all.",
+      "Unresolved type 'Quternion' encountered; replaced with 'any' due to --unresolved-type any-all.",
+    ]);
+  });
 });
 
-test("alias-any mode preserves unresolved name and emits fallback alias", async () => {
-  const fixtureRoot = await createFixture(buildBaseDocument());
+test("any-bare matches bare-name fallback behavior", { concurrency: false }, async () => {
+  await withFixture(buildBaseDocument(), async (fixtureRoot) => {
+    const result = await generateDeclarations({
+      sourcePath: fixtureRoot,
+      jsonPath: undefined,
+      outPath: undefined,
+      unresolvedTypeMode: "any-bare",
+    });
 
-  try {
+    assert.ok(result.text.includes("quat: any;"));
+    assert.equal(result.warnings[0], "Unresolved bare type 'Quternion' encountered; replaced with 'any' due to --unresolved-type any.");
+  });
+});
+
+test("alias-any mode preserves unresolved name and emits fallback alias", { concurrency: false }, async () => {
+  await withFixture(buildBaseDocument(), async (fixtureRoot) => {
     const result = await generateDeclarations({
       sourcePath: fixtureRoot,
       jsonPath: undefined,
@@ -152,10 +183,8 @@ test("alias-any mode preserves unresolved name and emits fallback alias", async 
       unresolvedTypeMode: "alias-any",
     });
 
-    assert.match(result.text, /quat: Quternion;/);
-    assert.match(result.text, /declare type Quternion = any;/);
-    assert.ok(result.warnings.some((warning) => warning.includes("declare type Quternion = any")));
-  } finally {
-    await rm(fixtureRoot, { recursive: true, force: true });
-  }
+    assert.ok(result.text.includes("quat: Quternion;"));
+    assert.ok(result.text.includes("declare type Quternion = any;"));
+    assert.equal(result.warnings[0], "Unresolved bare type 'Quternion' encountered; preserving name and emitting 'declare type Quternion = any'.");
+  });
 });
