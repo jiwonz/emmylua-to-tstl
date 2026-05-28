@@ -1,61 +1,44 @@
 # emmylua-to-tstl
 
-`emmylua-to-tstl` converts EmmyLua meta Lua files plus `emmylua_doc_cli` JSON output into global TypeScript declaration files for TSTL-oriented projects.
+Lightweight CLI to generate TypeScript ambient declarations (.d.ts) from EmmyLua `.meta.lua` metadata (consumes `emmylua_doc_cli` JSON); useful alongside TypeScript→Lua toolchains such as TSTL.
 
-It uses the JSON for class and member declarations, then scans the meta Lua source for top-level helper functions that the JSON does not surface.
+## Install
 
-## Usage
-
-```powershell
-pnpm build
-node dist/index.js sample --out sample/example_types.d.ts
+```bash
+pnpm add -D emmylua-to-tstl
 ```
 
-If you already have a single `.meta.lua` file and its JSON companion, you can point the CLI at the file instead of the folder:
+## Quick CLI usage
 
-```powershell
-node dist/index.js sample/example_types.meta.lua --json sample/example_types.json
+```bash
+# write to stdout
+pnpm exec emmylua-to-tstl sample
+
+# write to file
+pnpm exec emmylua-to-tstl sample --json sample --out typings/example_types.d.ts --unresolved-type any-all
 ```
 
-## Unresolved types
+## Configuration
 
-The CLI supports `--unresolved-type` to control how unresolved type names that cannot be resolved from the JSON are handled:
+- `--json <path>`: path to emmylua_doc_cli JSON (file or dir)
+- `--out <file>`: output `.d.ts` file (defaults to stdout)
+- `--unresolved-type <mode>`: `strict|nonstrict|any|alias-any|any-bare|any-all`
 
-- `strict`: fail the conversion and report the unresolved names
-- `nonstrict`: keep the unresolved names in the generated `.d.ts`
-- `any`: replace unresolved bare names with `any`
-- `alias-any`: keep the unresolved names and emit `declare type Name = any` aliases
-- `any-bare`: same as `any`
-- `any-all`: replace unresolved bare and qualified names with `any`
 
-Examples:
 
-```powershell
-node dist/index.js sample --out sample/example_types.d.ts --unresolved-type strict
-node dist/index.js sample --out sample/example_types.d.ts --unresolved-type nonstrict
-node dist/index.js sample --out sample/example_types.d.ts --unresolved-type any
-node dist/index.js sample --out sample/example_types.d.ts --unresolved-type alias-any
-node dist/index.js sample --out sample/example_types.d.ts --unresolved-type any-bare
-node dist/index.js sample --out sample/example_types.d.ts --unresolved-type any-all
-```
+## Notes
 
-## Input format
-
-The tool expects the JSON produced by `emmylua_doc_cli` alongside the original meta Lua file. It emits ambient declarations for:
-
-- classes
-- class fields and methods
-- global functions
-- global constants and function-valued fields
-
-Identifiers that are not valid TypeScript globals are normalized to safe names. For example, a Lua helper named `typeof` is emitted as `typeof_`.
+- The tool reads the `.meta.lua` filenames and consumes the corresponding `emmylua_doc_cli` JSON — it does not parse raw Lua source.
+- Warnings are printed to stderr; generated declarations go to stdout or the `--out` file.
 
 ## Development
 
-```powershell
+```bash
 pnpm install
 pnpm build
-pnpm check
+pnpm test
 ```
 
-The repository includes a sample pair under `sample/` that you can use as a reference input.
+## License
+
+MIT License
