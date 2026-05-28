@@ -1,0 +1,4 @@
+[tools]
+"github:EmmyLuaLs/emmylua-analyzer-rust" = { version = "latest", asset_pattern = "emmylua_doc_cli*" }
+node = "22.19.0"
+pnpm = "latest"

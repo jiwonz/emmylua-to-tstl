@@ -1,0 +1,28 @@
+{
+  "name": "emmylua-to-tstl",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A TypeScript CLI that transpiles EmmyLua meta Lua plus emmylua_doc_cli JSON into global .d.ts files.",
+  "type": "module",
+  "engines": {
+    "node": "22.19.0"
+  },
+  "bin": {
+    "emmylua-to-tstl": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "test": "pnpm build && node --test dist/**/*.test.js",
+    "start": "node dist/index.js",
+    "generate:sample": "node dist/index.js sample --out sample/vgf_types.d.ts",
+    "check": "biome check .",
+    "format": "biome format --write .",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.4.16",
+    "@types/node": "^22.15.30",
+    "typescript": "^5.9.3"
+  }
+}
