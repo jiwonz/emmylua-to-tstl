@@ -1,25 +1,48 @@
 {
   "name": "emmylua-to-tstl",
   "version": "0.1.0",
-  "private": true,
   "description": "A TypeScript CLI that transpiles EmmyLua meta Lua plus emmylua_doc_cli JSON into global .d.ts files.",
   "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jiwonz/emmylua-to-tstl.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jiwonz/emmylua-to-tstl/issues"
+  },
+  "homepage": "https://github.com/jiwonz/emmylua-to-tstl#readme",
   "engines": {
     "node": "22.19.0"
   },
   "bin": {
     "emmylua-to-tstl": "dist/index.js"
   },
+  "files": [
+    "dist/index.js",
+    "dist/transpile.js",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch",
     "test": "pnpm build && node --test dist/**/*.test.js",
+    "prepack": "pnpm build",
     "start": "node dist/index.js",
     "generate:sample": "node dist/index.js sample --out sample/example_types.d.ts",
     "check": "biome check .",
     "format": "biome format --write .",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
+  "keywords": [
+    "emmylua",
+    "tstl",
+    "lua",
+    "typescript",
+    "cli",
+    "declarations"
+  ],
   "devDependencies": {
     "@biomejs/biome": "2.4.16",
     "@types/node": "^22.15.30",
