@@ -219,21 +219,24 @@ let activeTypeResolutionContext: TypeResolutionContext | undefined;
 
 export async function runCli(argv: string[]): Promise<number> {
   const parsed = parseArgs(argv);
+  const sourceIsDirectory = await fs.stat(path.resolve(parsed.options.sourcePath)).then((stat) => stat.isDirectory(), () => false);
 
   if (parsed.help) {
     printHelp();
     return 0;
   }
 
-  if (parsed.options.outDir) {
-    if (parsed.options.outPath) {
+  const outputMode = resolveOutputMode(parsed.options, sourceIsDirectory);
+
+  if (outputMode.kind === "directory") {
+    if (parsed.options.outDir && parsed.options.outPath) {
       throw new Error("Cannot specify both --out and --out-dir");
     }
 
     const perFile = await generateDeclarationsPerFile(parsed.options);
 
     for (const item of perFile) {
-      const outFull = path.resolve(parsed.options.outDir, item.relativePath);
+      const outFull = path.resolve(outputMode.outDir, item.relativePath);
       await fs.mkdir(path.dirname(outFull), { recursive: true });
       await fs.writeFile(outFull, item.text, "utf8");
 
@@ -259,6 +262,29 @@ export async function runCli(argv: string[]): Promise<number> {
   }
 
   return 0;
+}
+
+function resolveOutputMode(options: CliOptions, sourceIsDirectory: boolean):
+  | { kind: "stdout" }
+  | { kind: "file"; outPath: string }
+  | { kind: "directory"; outDir: string } {
+  if (options.outDir) {
+    return { kind: "directory", outDir: options.outDir };
+  }
+
+  if (!options.outPath) {
+    return { kind: "stdout" };
+  }
+
+  // Heuristic: if the source is a directory and the output path has no file extension,
+  // treat it as a directory target so `-o generated/definitions` becomes a folder.
+  const looksDirectoryLike = path.extname(options.outPath) === "";
+
+  if (sourceIsDirectory && looksDirectoryLike) {
+    return { kind: "directory", outDir: options.outPath };
+  }
+
+  return { kind: "file", outPath: options.outPath };
 }
 
 export async function generateDeclarations(
@@ -548,6 +574,7 @@ export async function generateDeclarationsPerFile(
 
     const relativePath = path
       .relative(sourceRoot, metaFile)
+      .replace(/\.meta\.lua$/i, ".d.ts")
       .replace(/\.lua$/i, ".d.ts");
     results.push({ relativePath, text, warnings });
   }

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -20,7 +20,7 @@ async function createFixture(
     path.join(os.tmpdir(), "emmylua-to-tstl-test-"),
   );
   const metaPath = path.join(fixtureRoot, fileName);
-  const jsonPath = metaPath.replace(/\.meta\.lua$/i, ".json").replace(/\.lua$/i, ".json");
+  const jsonPath = toJsonFixturePath(metaPath);
 
   await writeFile(metaPath, "---@meta\n", "utf8");
   await writeFile(jsonPath, JSON.stringify(document, null, 2), "utf8");
@@ -33,13 +33,17 @@ async function createDirectoryFixture(files: Array<{ filePath: string; document:
 
   for (const file of files) {
     const metaPath = path.join(fixtureRoot, file.filePath);
-    const jsonPath = metaPath.replace(/\.lua$/i, ".json");
+    const jsonPath = toJsonFixturePath(metaPath);
     await mkdir(path.dirname(metaPath), { recursive: true });
     await writeFile(metaPath, "---@meta\n", "utf8");
     await writeFile(jsonPath, JSON.stringify(file.document, null, 2), "utf8");
   }
 
   return fixtureRoot;
+}
+
+function toJsonFixturePath(metaPath: string): string {
+  return metaPath.replace(/\.meta\.lua$/i, ".json").replace(/\.lua$/i, ".json");
 }
 
 async function withFixture<T>(
@@ -309,6 +313,45 @@ test("directory input with -o out writes a combined d.ts file", {
     const text = await readFile(outFile, "utf8");
     assert.ok(text.includes("declare class DemoClass"));
     assert.ok(text.includes("unknownValue: MissingType;"));
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+  }
+});
+
+test("directory input with directory-like -o writes per-file outputs", {
+  concurrency: false,
+}, async () => {
+  const fixtureRoot = await createDirectoryFixture([
+    {
+      filePath: path.join("lsp-meta", "ko", "DemoNamespace.meta.lua"),
+      document: buildBaseDocument(),
+    },
+    {
+      filePath: path.join("lsp-meta", "ko", "AuxNamespace.meta.lua"),
+      document: buildSecondaryDocument(),
+    },
+  ]);
+  const outDir = path.join(fixtureRoot, "generated", "definitions");
+
+  try {
+    const exitCode = await runCli([path.join(fixtureRoot, "lsp-meta", "ko"), "-o", outDir]);
+    assert.equal(exitCode, 0);
+
+    const entries = await readdir(outDir, { withFileTypes: true });
+    const outputFiles = entries
+      .filter((entry) => entry.isFile())
+      .map((entry) => entry.name)
+      .sort();
+
+    assert.deepEqual(outputFiles, ["AuxNamespace.d.ts", "DemoNamespace.d.ts"]);
+
+    const demoText = await readFile(path.join(outDir, "DemoNamespace.d.ts"), "utf8");
+    const auxText = await readFile(path.join(outDir, "AuxNamespace.d.ts"), "utf8");
+
+    assert.ok(demoText.includes("declare class DemoClass"));
+    assert.ok(demoText.includes("unknownValue: MissingType;"));
+    assert.ok(auxText.includes("declare class AuxClass"));
+    assert.ok(auxText.includes("declare function doThing(this: void, input: string): void;"));
   } finally {
     await rm(fixtureRoot, { recursive: true, force: true });
   }
