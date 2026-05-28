@@ -1,8 +1,10 @@
 # emmylua-to-tstl
 
-Lightweight CLI to generate TypeScript ambient declarations (.d.ts) from EmmyLua `.meta.lua` metadata (consumes `emmylua_doc_cli` JSON); useful alongside TypeScript→Lua toolchains such as TSTL.
+A simple CLI to generate TypeScript ambient declarations (.d.ts) from EmmyLua `.meta.lua` metadata (consumes `emmylua_doc_cli` JSON); useful alongside TypeScript→Lua toolchains such as [TSTL](https://typescripttolua.github.io/).
 
 ## Install
+
+Requires [`emmylua_doc_cli`](https://github.com/EmmyLuaLs/emmylua-analyzer-rust/releases) to produce the input JSON data.
 
 ```bash
 pnpm add -D emmylua-to-tstl
