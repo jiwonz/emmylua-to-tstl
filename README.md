@@ -24,8 +24,6 @@ pnpm exec emmylua-to-tstl sample --json sample --out typings/example_types.d.ts 
 - `--out <file>`: output `.d.ts` file (defaults to stdout)
 - `--unresolved-type <mode>`: `strict|nonstrict|any|alias-any|any-bare|any-all`
 
-
-
 ## Notes
 
 - The tool reads the `.meta.lua` filenames and consumes the corresponding `emmylua_doc_cli` JSON — it does not parse raw Lua source.
@@ -33,12 +31,8 @@ pnpm exec emmylua-to-tstl sample --json sample --out typings/example_types.d.ts 
 
 ## Development
 
-```bash
-pnpm install
-pnpm build
-pnpm test
-```
+We use `mise` to manage tools and versions. After cloning, run `mise install` to set up the environment.
 
 ## License
 
-MIT License
+MIT
