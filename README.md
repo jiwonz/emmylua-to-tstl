@@ -71,6 +71,7 @@ pnpm exec emmylua-to-tstl sample --include "**/core/*.lua" --exclude "**/test-*.
  - The tool reads `.lua` files or directories containing them (recursively). For each `X.lua` it expects `X.json` next to it (or will run `emmylua_doc_cli` to generate JSON when needed).
  - When a directory is provided, the tool recursively discovers `.lua` files; use `--include`/`--exclude` to restrict selection.
  - Warnings are printed to stderr; generated declarations go to stdout, the `--out` file, or per-file under `--out-dir`.
+- This tool was written with AI assistance, so expect some weird code and edge cases. Please report issues or submit PRs if you have improvements!
 
 ## Development
 
