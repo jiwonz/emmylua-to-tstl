@@ -19,6 +19,9 @@ pnpm exec emmylua-to-tstl sample
 # write to file
 pnpm exec emmylua-to-tstl sample --out typings/example_types.d.ts --unresolved-type any-all
 
+	# write to file and disable TypeScript checking in the emitted file
+	pnpm exec emmylua-to-tstl sample --out typings/example_types.d.ts --no-check
+
 # same output flag using the short alias
 pnpm exec emmylua-to-tstl sample -o typings/example_types.d.ts
 ```
@@ -36,6 +39,7 @@ pnpm exec emmylua-to-tstl sample --include "**/core/*.lua" --exclude "**/test-*.
 - `--out <file>`: output `.d.ts` file (defaults to stdout)
 - `-o <file>`: short alias for `--out`
 - `--unresolved-type <mode>`: `strict|nonstrict|any|alias-any|any-bare|any-all` (default: `nonstrict`)
+ - `--no-check`: Prefix generated .d.ts with `// @ts-nocheck` to disable TS checking.
  - `--out <file>`: output `.d.ts` file (defaults to stdout)
  - `-o <file>`: short alias for `--out`
  - `--out-dir <dir>`: emit one `.d.ts` per input `.lua` under `<dir>` (preserves relative paths)

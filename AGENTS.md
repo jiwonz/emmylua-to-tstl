@@ -34,3 +34,10 @@ Repository guidance for coding agents working in this workspace.
 - Prefer minimal diffs and avoid unrelated refactors.
 - Do not regenerate sample outputs unless needed for verification.
 - Run tests after changing generator behavior.
+
+## Agent execution environment
+
+- When running shell/terminal commands, avoid embedding control characters (for example `^U` or other non-printable prefixes) before commands. These can be interpreted literally by PowerShell and other shells and will cause failures.
+- Prefer PowerShell-safe command forms for this repository's environment (Windows): use `;` to separate commands or run separate commands rather than using shell-specific `&&` chaining.
+- When showing commands to the user, present them explicitly and verbatim so they can copy/paste into their shell.
+- If an agent must execute commands programmatically, ensure the command string is sanitized to remove control characters and is compatible with PowerShell.

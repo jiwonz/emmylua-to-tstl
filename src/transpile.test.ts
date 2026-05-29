@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -20,7 +20,7 @@ async function createFixture(
     path.join(os.tmpdir(), "emmylua-to-tstl-test-"),
   );
   const metaPath = path.join(fixtureRoot, fileName);
-  const jsonPath = toJsonFixturePath(metaPath);
+  const jsonPath = metaPath.replace(/\.meta\.lua$/i, ".json").replace(/\.lua$/i, ".json");
 
   await writeFile(metaPath, "---@meta\n", "utf8");
   await writeFile(jsonPath, JSON.stringify(document, null, 2), "utf8");
@@ -33,17 +33,13 @@ async function createDirectoryFixture(files: Array<{ filePath: string; document:
 
   for (const file of files) {
     const metaPath = path.join(fixtureRoot, file.filePath);
-    const jsonPath = toJsonFixturePath(metaPath);
+    const jsonPath = metaPath.replace(/\.meta\.lua$/i, ".json").replace(/\.lua$/i, ".json");
     await mkdir(path.dirname(metaPath), { recursive: true });
     await writeFile(metaPath, "---@meta\n", "utf8");
     await writeFile(jsonPath, JSON.stringify(file.document, null, 2), "utf8");
   }
 
   return fixtureRoot;
-}
-
-function toJsonFixturePath(metaPath: string): string {
-  return metaPath.replace(/\.meta\.lua$/i, ".json").replace(/\.lua$/i, ".json");
 }
 
 async function withFixture<T>(
@@ -130,6 +126,48 @@ function buildSecondaryDocument(): TestMetaDocument {
   };
 }
 
+function buildEnumDocument(): TestMetaDocument {
+  return {
+    types: [
+      {
+        type: "enum",
+        name: "DemoEnum",
+        baseType: "number",
+        fields: [{ name: "Red" }, { name: "Green" }, { name: "Blue" }],
+      },
+    ],
+    globals: [],
+  };
+}
+
+function buildQualifiedNamespaceDocument(): TestMetaDocument {
+  return {
+    types: [
+      {
+        type: "class",
+        name: "DemoFramework",
+        members: [],
+      },
+      {
+        type: "enum",
+        name: "DemoFramework.AnimatorUpdateMode",
+        baseType: "number",
+        fields: [
+          { name: "Normal", value: "0" },
+          { name: "AnimatePhysics", value: "1" },
+          { name: "UnscaledTime", value: "2" },
+        ],
+      },
+      {
+        type: "class",
+        name: "DemoFramework.UI.Button",
+        members: [],
+      },
+    ],
+    globals: [],
+  };
+}
+
 test("nonstrict keeps unresolved names and emits static overloads", {
   concurrency: false,
 }, async () => {
@@ -146,8 +184,8 @@ test("nonstrict keeps unresolved names and emits static overloads", {
     private constructor();
     serviceThing: DemoNamespace.DemoObject;
     unknownValue: MissingType;
-    static makeValue(): DemoColor;
-    static makeValue(hex: string): DemoColor;
+    static makeValue(this: void): DemoColor;
+    static makeValue(this: void, hex: string): DemoColor;
 }`),
     );
     assert.equal(result.warnings.length, 0);
@@ -187,8 +225,8 @@ test("any mode replaces unresolved bare types with any", {
     private constructor();
     serviceThing: DemoNamespace.DemoObject;
     unknownValue: any;
-    static makeValue(): DemoColor;
-    static makeValue(hex: string): DemoColor;
+    static makeValue(this: void): DemoColor;
+    static makeValue(this: void, hex: string): DemoColor;
 }`),
     );
     assert.deepEqual(result.warnings, [
@@ -213,8 +251,8 @@ test("any-all mode replaces qualified unresolved types with any", {
     private constructor();
     serviceThing: any;
     unknownValue: any;
-    static makeValue(): DemoColor;
-    static makeValue(hex: string): DemoColor;
+    static makeValue(this: void): DemoColor;
+    static makeValue(this: void, hex: string): DemoColor;
 }`),
     );
     assert.deepEqual(result.warnings, [
@@ -318,40 +356,46 @@ test("directory input with -o out writes a combined d.ts file", {
   }
 });
 
-test("directory input with directory-like -o writes per-file outputs", {
+test("enum.meta.lua emits a populated enum.d.ts file", {
   concurrency: false,
 }, async () => {
   const fixtureRoot = await createDirectoryFixture([
-    {
-      filePath: path.join("lsp-meta", "ko", "DemoNamespace.meta.lua"),
-      document: buildBaseDocument(),
-    },
-    {
-      filePath: path.join("lsp-meta", "ko", "AuxNamespace.meta.lua"),
-      document: buildSecondaryDocument(),
-    },
+    { filePath: "enum.meta.lua", document: buildEnumDocument() },
   ]);
-  const outDir = path.join(fixtureRoot, "generated", "definitions");
+  const outDir = path.join(fixtureRoot, "generated");
 
   try {
-    const exitCode = await runCli([path.join(fixtureRoot, "lsp-meta", "ko"), "-o", outDir]);
+    const exitCode = await runCli([fixtureRoot, "-o", outDir]);
     assert.equal(exitCode, 0);
 
-    const entries = await readdir(outDir, { withFileTypes: true });
-    const outputFiles = entries
-      .filter((entry) => entry.isFile())
-      .map((entry) => entry.name)
-      .sort();
+    const text = await readFile(path.join(outDir, "enum.d.ts"), "utf8");
+    assert.ok(text.includes("declare enum DemoEnum"));
+    assert.ok(text.includes("Red"));
+    assert.ok(text.includes("Green"));
+    assert.ok(text.includes("Blue"));
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+  }
+});
 
-    assert.deepEqual(outputFiles, ["AuxNamespace.d.ts", "DemoNamespace.d.ts"]);
+test("qualified declarations emit namespaces", {
+  concurrency: false,
+}, async () => {
+  const fixtureRoot = await createDirectoryFixture([
+    { filePath: "DemoFramework.meta.lua", document: buildQualifiedNamespaceDocument() },
+  ]);
+  const outDir = path.join(fixtureRoot, "generated");
 
-    const demoText = await readFile(path.join(outDir, "DemoNamespace.d.ts"), "utf8");
-    const auxText = await readFile(path.join(outDir, "AuxNamespace.d.ts"), "utf8");
+  try {
+    const exitCode = await runCli([fixtureRoot, "-o", outDir]);
+    assert.equal(exitCode, 0);
 
-    assert.ok(demoText.includes("declare class DemoClass"));
-    assert.ok(demoText.includes("unknownValue: MissingType;"));
-    assert.ok(auxText.includes("declare class AuxClass"));
-    assert.ok(auxText.includes("declare function doThing(this: void, input: string): void;"));
+    const text = await readFile(path.join(outDir, "DemoFramework.d.ts"), "utf8");
+    assert.ok(text.includes("declare namespace DemoFramework"));
+    assert.ok(text.includes("export enum AnimatorUpdateMode"));
+    assert.ok(text.includes("Normal = 0"));
+    assert.ok(text.includes("namespace UI"));
+    assert.ok(text.includes("export class Button"));
   } finally {
     await rm(fixtureRoot, { recursive: true, force: true });
   }

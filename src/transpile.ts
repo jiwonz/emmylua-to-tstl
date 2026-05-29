@@ -1,9 +1,9 @@
-import { promises as fs } from "node:fs";
-import path from "node:path";
-import ts from "typescript";
 import { execFile as _execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { promises as fs } from "node:fs";
 import os from "node:os";
+import path from "node:path";
+import { promisify } from "node:util";
+import ts from "typescript";
 
 const execFile = promisify(_execFile);
 
@@ -15,6 +15,7 @@ export interface CliOptions {
   includePatterns?: string[] | undefined;
   excludePatterns?: string[] | undefined;
   unresolvedTypeMode?: UnresolvedTypeMode;
+  noCheck?: boolean;
 }
 
 export type UnresolvedTypeMode =
@@ -48,6 +49,23 @@ interface MetaClassEntry extends MetaBaseEntry {
   bases?: string[];
   generics?: string[];
   members?: MetaMemberEntry[];
+}
+
+interface MetaEnumFieldEntry {
+  name: string;
+  value?: unknown;
+  literal?: unknown;
+  [key: string]: unknown;
+}
+
+interface MetaEnumEntry extends MetaBaseEntry {
+  type: "enum";
+  base?: string;
+  baseType?: string;
+  superType?: string;
+  typ?: string;
+  fields?: MetaEnumFieldEntry[];
+  members?: MetaEnumFieldEntry[];
 }
 
 interface MetaFieldEntry extends MetaBaseEntry {
@@ -85,7 +103,11 @@ interface MetaGenericEntry {
   base?: string | null;
 }
 
-type MetaTypeEntry = MetaClassEntry | MetaFieldEntry | MetaFnEntry;
+type MetaTypeEntry =
+  | MetaClassEntry
+  | MetaEnumEntry
+  | MetaFieldEntry
+  | MetaFnEntry;
 type MetaMemberEntry = MetaFieldEntry | MetaFnEntry;
 
 interface FunctionSignatureSpec {
@@ -219,7 +241,12 @@ let activeTypeResolutionContext: TypeResolutionContext | undefined;
 
 export async function runCli(argv: string[]): Promise<number> {
   const parsed = parseArgs(argv);
-  const sourceIsDirectory = await fs.stat(path.resolve(parsed.options.sourcePath)).then((stat) => stat.isDirectory(), () => false);
+  const sourceIsDirectory = await fs
+    .stat(path.resolve(parsed.options.sourcePath))
+    .then(
+      (stat) => stat.isDirectory(),
+      () => false,
+    );
 
   if (parsed.help) {
     printHelp();
@@ -229,10 +256,6 @@ export async function runCli(argv: string[]): Promise<number> {
   const outputMode = resolveOutputMode(parsed.options, sourceIsDirectory);
 
   if (outputMode.kind === "directory") {
-    if (parsed.options.outDir && parsed.options.outPath) {
-      throw new Error("Cannot specify both --out and --out-dir");
-    }
-
     const perFile = await generateDeclarationsPerFile(parsed.options);
 
     for (const item of perFile) {
@@ -264,7 +287,10 @@ export async function runCli(argv: string[]): Promise<number> {
   return 0;
 }
 
-function resolveOutputMode(options: CliOptions, sourceIsDirectory: boolean):
+function resolveOutputMode(
+  options: CliOptions,
+  sourceIsDirectory: boolean,
+):
   | { kind: "stdout" }
   | { kind: "file"; outPath: string }
   | { kind: "directory"; outDir: string } {
@@ -276,10 +302,7 @@ function resolveOutputMode(options: CliOptions, sourceIsDirectory: boolean):
     return { kind: "stdout" };
   }
 
-  // Heuristic: if the source is a directory and the output path has no file extension,
-  // treat it as a directory target so `-o generated/definitions` becomes a folder.
   const looksDirectoryLike = path.extname(options.outPath) === "";
-
   if (sourceIsDirectory && looksDirectoryLike) {
     return { kind: "directory", outDir: options.outPath };
   }
@@ -295,7 +318,11 @@ export async function generateDeclarations(
   const sourceRoot = sourceStat.isDirectory()
     ? sourcePath
     : path.dirname(sourcePath);
-  const metaFiles = await collectMetaFiles(sourcePath, options.includePatterns, options.excludePatterns);
+  const metaFiles = await collectMetaFiles(
+    sourcePath,
+    options.includePatterns,
+    options.excludePatterns,
+  );
   const warnings: string[] = [];
   const jsonRoot = options.jsonPath
     ? path.resolve(options.jsonPath)
@@ -320,13 +347,13 @@ export async function generateDeclarations(
     if (!allJsonExist) {
       const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "emmylua-doc-"));
       try {
-        // Try to run emmylua_doc_cli against the source root, emitting JSON into tmpDir.
+        // Try to run emmylua_doc_cli against the exact source input, emitting JSON into tmpDir.
         // This requires `emmylua_doc_cli` to be on PATH. If it fails, surface a helpful error.
         await execFile(
           "emmylua_doc_cli",
-          ["--output-format", "json", "--output", tmpDir, sourceRoot],
+          ["--output-format", "json", "--output", tmpDir, sourcePath],
           {
-          cwd: sourceRoot,
+            cwd: sourceRoot,
           },
         );
         effectiveJsonRoot = tmpDir;
@@ -364,7 +391,7 @@ export async function generateDeclarations(
   const knownTypeNames = new Set<string>();
   for (const { document } of documents) {
     for (const entry of document.types ?? []) {
-      if (entry.type === "class") {
+      if (entry.type === "class" || entry.type === "enum") {
         knownTypeNames.add(toValidTypeName(entry.name));
       }
     }
@@ -425,7 +452,8 @@ export async function generateDeclarations(
     ts.NodeFlags.None,
   );
   const printer = ts.createPrinter({ newLine: ts.NewLineKind.LineFeed });
-  const text = `// Generated from EmmyLua meta Lua + emmylua_doc_cli JSON. Do not edit by hand.\n${printer.printFile(sourceFile)}`;
+  const noCheckPrefix = options.noCheck ? "// @ts-nocheck\n" : "";
+  const text = `${noCheckPrefix}// Generated from EmmyLua meta Lua + emmylua_doc_cli JSON. Do not edit by hand.\n${printer.printFile(sourceFile)}`;
 
   return { text, warnings };
 }
@@ -438,7 +466,11 @@ export async function generateDeclarationsPerFile(
   const sourceRoot = sourceStat.isDirectory()
     ? sourcePath
     : path.dirname(sourcePath);
-  const metaFiles = await collectMetaFiles(sourcePath, options.includePatterns, options.excludePatterns);
+  const metaFiles = await collectMetaFiles(
+    sourcePath,
+    options.includePatterns,
+    options.excludePatterns,
+  );
   const jsonRoot = options.jsonPath
     ? path.resolve(options.jsonPath)
     : undefined;
@@ -460,9 +492,10 @@ export async function generateDeclarationsPerFile(
     if (!allJsonExist) {
       const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "emmylua-doc-"));
       try {
+        const execTarget = sourceStat.isDirectory() ? sourceRoot : sourcePath;
         await execFile(
           "emmylua_doc_cli",
-          ["--output-format", "json", "--output", tmpDir, sourceRoot],
+          ["--output-format", "json", "--output", tmpDir, execTarget],
           {
             cwd: sourceRoot,
           },
@@ -501,7 +534,7 @@ export async function generateDeclarationsPerFile(
   const knownTypeNames = new Set<string>();
   for (const { document } of documents) {
     for (const entry of document.types ?? []) {
-      if (entry.type === "class") {
+      if (entry.type === "class" || entry.type === "enum") {
         knownTypeNames.add(toValidTypeName(entry.name));
       }
     }
@@ -570,7 +603,8 @@ export async function generateDeclarationsPerFile(
       ts.NodeFlags.None,
     );
     const printer = ts.createPrinter({ newLine: ts.NewLineKind.LineFeed });
-    const text = `// Generated from EmmyLua meta Lua + emmylua_doc_cli JSON. Do not edit by hand.\n${printer.printFile(sourceFile)}`;
+    const noCheckPrefix = options.noCheck ? "// @ts-nocheck\n" : "";
+    const text = `${noCheckPrefix}// Generated from EmmyLua meta Lua + emmylua_doc_cli JSON. Do not edit by hand.\n${printer.printFile(sourceFile)}`;
 
     const relativePath = path
       .relative(sourceRoot, metaFile)
@@ -611,18 +645,30 @@ export async function collectMetaFiles(
     if (!resolvedInput.endsWith(".lua")) return [];
     const rel = path.basename(resolvedInput);
     if (excludePatterns && matchesAny(rel, excludePatterns)) return [];
-    if (includePatterns && includePatterns.length > 0 && !matchesAny(rel, includePatterns)) return [];
+    if (
+      includePatterns &&
+      includePatterns.length > 0 &&
+      !matchesAny(rel, includePatterns)
+    )
+      return [];
     return [resolvedInput];
   }
 
   const files: string[] = [];
   await walkDirectory(resolvedInput, files);
-  const filtered = files.filter((file) => file.endsWith(".lua")).filter((file) => {
-    const rel = path.relative(resolvedInput, file).split(path.sep).join("/");
-    if (excludePatterns && matchesAny(rel, excludePatterns)) return false;
-    if (includePatterns && includePatterns.length > 0 && !matchesAny(rel, includePatterns)) return false;
-    return true;
-  });
+  const filtered = files
+    .filter((file) => file.endsWith(".lua"))
+    .filter((file) => {
+      const rel = path.relative(resolvedInput, file).split(path.sep).join("/");
+      if (excludePatterns && matchesAny(rel, excludePatterns)) return false;
+      if (
+        includePatterns &&
+        includePatterns.length > 0 &&
+        !matchesAny(rel, includePatterns)
+      )
+        return false;
+      return true;
+    });
 
   return filtered.sort((left, right) => left.localeCompare(right));
 }
@@ -636,6 +682,7 @@ function parseArgs(argv: string[]): { help: boolean; options: CliOptions } {
   const includePatterns: string[] = [];
   const excludePatterns: string[] = [];
   let unresolvedTypeMode: UnresolvedTypeMode = "nonstrict";
+  let noCheck = false;
 
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
@@ -695,6 +742,11 @@ function parseArgs(argv: string[]): { help: boolean; options: CliOptions } {
       continue;
     }
 
+    if (argument === "--no-check") {
+      noCheck = true;
+      continue;
+    }
+
     if (argument.startsWith("-")) {
       throw new Error(`Unknown option: ${argument}`);
     }
@@ -716,6 +768,7 @@ function parseArgs(argv: string[]): { help: boolean; options: CliOptions } {
       includePatterns: includePatterns.length > 0 ? includePatterns : undefined,
       excludePatterns: excludePatterns.length > 0 ? excludePatterns : undefined,
       unresolvedTypeMode,
+      noCheck,
     },
   };
 }
@@ -749,6 +802,7 @@ Options:
   --unresolved-type <mode>
                   How to handle unresolved type names:
                   strict | nonstrict (default) | any | alias-any | any-bare | any-all
+  --no-check      Prefix generated .d.ts with \`// @ts-nocheck\`
   -h, --help      Show this help message
 
 Examples:
@@ -775,7 +829,15 @@ function buildStatementsForDocument(
   const classes = typeEntries.filter(
     (entry): entry is MetaClassEntry => entry.type === "class",
   );
+  const enums = typeEntries.filter(
+    (entry): entry is MetaEnumEntry => entry.type === "enum",
+  );
   const classNames = new Set(classes.map((entry) => entry.name));
+  const isKnownTypeName = (n: string) =>
+    classNames.has(n) ||
+    (activeTypeResolutionContext?.knownTypeNames ?? new Set<string>()).has(
+      toValidTypeName(n),
+    );
   const globalEntries = Array.isArray(document.globals)
     ? [...document.globals]
     : [];
@@ -791,13 +853,81 @@ function buildStatementsForDocument(
   );
   const statements: ts.Statement[] = [];
 
+  // Collect qualified (dotted) declarations into a tree so we can emit a single
+  // `declare namespace <Root> { ... }` block per top-level root instead of
+  // repeating `declare namespace Root { ... }` for each member.
+  type ModuleNode = {
+    children: Map<string, ModuleNode>;
+    declarations: ts.Statement[];
+  };
+  const qualifiedRoots = new Map<string, ModuleNode>();
+
+  const ensureRoot = (name: string): ModuleNode => {
+    let node = qualifiedRoots.get(name);
+    if (!node) {
+      node = { children: new Map(), declarations: [] };
+      qualifiedRoots.set(name, node);
+    }
+    return node;
+  };
+
+  const ensureChild = (parent: ModuleNode, name: string): ModuleNode => {
+    let node = parent.children.get(name);
+    if (!node) {
+      node = { children: new Map(), declarations: [] };
+      parent.children.set(name, node);
+    }
+    return node;
+  };
+
+  const insertQualified = (fullName: string, declaration: ts.Statement) => {
+    const segments = fullName.split(".").filter(Boolean);
+    if (segments.length === 0) return;
+    const root = segments[0];
+    if (!root) return;
+    const path = segments.slice(1);
+    const rootNode = ensureRoot(root);
+
+    if (path.length === 0) {
+      rootNode.declarations.push(declaration);
+      return;
+    }
+
+    let node = rootNode;
+    for (let i = 0; i < path.length - 1; i += 1) {
+      const segment = path[i];
+      if (!segment) {
+        continue;
+      }
+
+      node = ensureChild(node, segment);
+    }
+
+    // Place the declaration into the parent node for the final segment
+    node.declarations.push(declaration);
+  };
+
   for (const classEntry of classes) {
-    statements.push(buildClassDeclaration(classEntry));
+    const decl = buildClassDeclaration(classEntry);
+    if (classEntry.name.includes(".")) {
+      insertQualified(classEntry.name, decl);
+    } else {
+      statements.push(decl);
+    }
+  }
+
+  for (const enumEntry of enums) {
+    const decl = buildEnumDeclaration(enumEntry);
+    if (enumEntry.name.includes(".")) {
+      insertQualified(enumEntry.name, decl);
+    } else {
+      statements.push(decl);
+    }
   }
 
   const fieldGroups = groupByName(
     topLevelFields.filter(
-      (entry) => !classNames.has(entry.name) && entry.typ !== undefined,
+      (entry) => !isKnownTypeName(entry.name) && entry.typ !== undefined,
     ),
   );
   const groupedFieldNames = new Set(fieldGroups.keys());
@@ -869,7 +999,7 @@ function buildStatementsForDocument(
   const duplicateFunctionNames = new Set(functionGroups.keys());
   for (const fieldEntry of topLevelFields) {
     if (
-      classNames.has(fieldEntry.name) ||
+      isKnownTypeName(fieldEntry.name) ||
       duplicateFunctionNames.has(fieldEntry.name) ||
       groupedFieldNames.has(fieldEntry.name)
     ) {
@@ -929,10 +1059,58 @@ function buildStatementsForDocument(
     );
   }
 
+  // Convert qualified roots into ModuleDeclaration trees and append to statements.
+  const buildModuleFromNode = (
+    name: string,
+    node: ModuleNode,
+    isOutermost: boolean,
+  ): ts.ModuleDeclaration => {
+    const innerStatements: ts.Statement[] = [];
+
+    // Add direct declarations first (these are class/enum declarations with `export` modifier already)
+    innerStatements.push(...node.declarations);
+
+    // Recurse children in sorted key order for deterministic output
+    const childKeys = [...node.children.keys()].sort((a, b) =>
+      a.localeCompare(b),
+    );
+    for (const childKey of childKeys) {
+      const childNode = node.children.get(childKey);
+      if (!childNode) {
+        continue;
+      }
+
+      const childModule = buildModuleFromNode(childKey, childNode, false);
+      innerStatements.push(childModule);
+    }
+
+    const modifiers = isOutermost
+      ? [ts.factory.createModifier(ts.SyntaxKind.DeclareKeyword)]
+      : undefined;
+
+    return ts.factory.createModuleDeclaration(
+      modifiers,
+      ts.factory.createIdentifier(name),
+      ts.factory.createModuleBlock(innerStatements),
+      ts.NodeFlags.Namespace,
+    );
+  };
+
+  for (const rootName of [...qualifiedRoots.keys()].sort((a, b) =>
+    a.localeCompare(b),
+  )) {
+    const rootNode = qualifiedRoots.get(rootName);
+    if (!rootNode) {
+      continue;
+    }
+
+    statements.push(buildModuleFromNode(rootName, rootNode, true));
+  }
+
   return statements;
 }
 
-function buildClassDeclaration(entry: MetaClassEntry): ts.ClassDeclaration {
+function buildClassDeclaration(entry: MetaClassEntry): ts.Statement {
   const members = [...(entry.members ?? [])].sort(
     (left, right) =>
       getLine(left) - getLine(right) || left.name.localeCompare(right.name),
@@ -949,6 +1127,20 @@ function buildClassDeclaration(entry: MetaClassEntry): ts.ClassDeclaration {
 
   for (const member of members) {
     if (member.type !== "field") {
+      continue;
+    }
+
+    // If this field's declared type is a qualified name rooted at this
+    // class/namespace (for example: class `VFramework` with field type
+    // `VFramework.Animator`), then that inner declaration will be emitted
+    // as a separate merged `namespace`/`class`. Emitting an instance field
+    // here is incorrect (instances would appear to have the member). Skip
+    // creating the instance property in that case.
+    const potentialField = member as MetaFieldEntry;
+    if (
+      typeof potentialField.typ === "string" &&
+      potentialField.typ.startsWith(`${entry.name}.`)
+    ) {
       continue;
     }
 
@@ -1000,13 +1192,39 @@ function buildClassDeclaration(entry: MetaClassEntry): ts.ClassDeclaration {
     classMembers.unshift(privateCtor);
   }
 
-  return ts.factory.createClassDeclaration(
-    [ts.factory.createModifier(ts.SyntaxKind.DeclareKeyword)],
-    toValidTypeName(entry.name),
+  const isQualified = entry.name.includes(".");
+  const declaration = ts.factory.createClassDeclaration(
+    isQualified
+      ? [ts.factory.createModifier(ts.SyntaxKind.ExportKeyword)]
+      : [ts.factory.createModifier(ts.SyntaxKind.DeclareKeyword)],
+    toValidTypeName(getLeafName(entry.name)),
     typeParameters,
     heritageClauses,
     classMembers,
   );
+
+  return declaration;
+}
+
+function buildEnumDeclaration(entry: MetaEnumEntry): ts.Statement {
+  const baseType = getEnumBaseType(entry)?.trim().toLowerCase();
+  const fields = getEnumFields(entry);
+
+  const enumMembers = fields.map((field, index) => {
+    const initializer = createEnumMemberInitializer(field, index, baseType);
+    return ts.factory.createEnumMember(toPropertyName(field.name), initializer);
+  });
+
+  const isQualified = entry.name.includes(".");
+  const declaration = ts.factory.createEnumDeclaration(
+    isQualified
+      ? [ts.factory.createModifier(ts.SyntaxKind.ExportKeyword)]
+      : [ts.factory.createModifier(ts.SyntaxKind.DeclareKeyword)],
+    toValidTypeName(getLeafName(entry.name)),
+    enumMembers,
+  );
+
+  return declaration;
 }
 
 function buildHeritageClauses(
@@ -1063,8 +1281,13 @@ function buildMethodDeclaration(
   isStatic: boolean,
 ): ts.MethodDeclaration {
   // Class methods are emitted as real overloads. Static members use the `static` modifier,
-  // while instance members remain regular methods.
-  const signature = buildFunctionSignature(entry, false);
+  // while instance members remain regular methods. If the JSON indicates this is not
+  // a method (`is_meth !== true`), include a `this: void` parameter to make the
+  // callable signature behave like a plain function.
+  const signature = buildFunctionSignature(
+    entry,
+    shouldEmitThisVoidParameter(entry),
+  );
   const typeParameters =
     signature.typeParameters.length > 0 ? signature.typeParameters : undefined;
 
@@ -1272,6 +1495,72 @@ function createCustomNamedVariableStatement(
     ),
     customName,
   );
+}
+
+function getEnumBaseType(entry: MetaEnumEntry): string | undefined {
+  const baseType = entry.baseType ?? entry.base ?? entry.superType ?? entry.typ;
+  return typeof baseType === "string" ? baseType : undefined;
+}
+
+function getEnumFields(entry: MetaEnumEntry): MetaEnumFieldEntry[] {
+  const fields = entry.fields ?? entry.members ?? [];
+  return fields.filter(
+    (field): field is MetaEnumFieldEntry =>
+      typeof field === "object" &&
+      field !== null &&
+      typeof field.name === "string",
+  );
+}
+
+function createEnumMemberInitializer(
+  field: MetaEnumFieldEntry,
+  index: number,
+  baseType?: string,
+): ts.Expression | undefined {
+  const rawValue = field.value ?? field.literal ?? field.constant ?? field.val;
+
+  if (typeof rawValue === "string") {
+    if (/^-?(?:0|[1-9]\d*)(?:\.\d+)?$/.test(rawValue)) {
+      return createNumericExpression(rawValue);
+    }
+
+    return ts.factory.createStringLiteral(rawValue);
+  }
+
+  if (typeof rawValue === "number") {
+    return createNumericExpression(rawValue);
+  }
+
+  if (typeof rawValue === "boolean") {
+    return rawValue ? ts.factory.createTrue() : ts.factory.createFalse();
+  }
+
+  if (baseType === "string") {
+    return ts.factory.createStringLiteral(field.name);
+  }
+
+  if (baseType === "number" || baseType === "integer") {
+    return ts.factory.createNumericLiteral(index);
+  }
+
+  return undefined;
+}
+
+function createNumericExpression(value: number | string): ts.Expression {
+  const text = String(value).trim();
+  if (text.startsWith("-")) {
+    return ts.factory.createPrefixUnaryExpression(
+      ts.SyntaxKind.MinusToken,
+      ts.factory.createNumericLiteral(text.slice(1)),
+    );
+  }
+
+  return ts.factory.createNumericLiteral(text);
+}
+
+function getLeafName(name: string): string {
+  const parts = name.split(".").filter(Boolean);
+  return parts.length > 0 ? (parts[parts.length - 1] ?? name) : name;
 }
 
 function buildFunctionSignature(
@@ -1815,10 +2104,16 @@ async function resolveJsonPath(options: {
 async function loadAggregatedDocuments(options: {
   jsonPath: string;
   fallbackMetaFile: string;
-}): Promise<Array<{ metaFile: string; jsonPath: string; document: MetaDocument }>> {
+}): Promise<
+  Array<{ metaFile: string; jsonPath: string; document: MetaDocument }>
+> {
   const jsonText = await fs.readFile(options.jsonPath, "utf8");
   const document = JSON.parse(jsonText) as MetaDocument;
-  return splitDocumentBySourceFile(document, options.fallbackMetaFile, options.jsonPath);
+  return splitDocumentBySourceFile(
+    document,
+    options.fallbackMetaFile,
+    options.jsonPath,
+  );
 }
 
 function splitDocumentBySourceFile(
@@ -1845,7 +2140,11 @@ function splitDocumentBySourceFile(
     entry: MetaTypeEntry,
   ): void => {
     const resolvedMetaFile = metaFile ?? fallbackMetaFile;
-    ensureGroup(resolvedMetaFile)[kind]!.push(entry);
+    const group = ensureGroup(resolvedMetaFile);
+    const bucket = group[kind];
+    if (bucket) {
+      bucket.push(entry);
+    }
   };
 
   for (const entry of document.types ?? []) {
@@ -1865,7 +2164,9 @@ function splitDocumentBySourceFile(
     }));
 }
 
-function getEntrySourceFile(entry: { loc?: MetaLoc | MetaLoc[] | null }): string | undefined {
+function getEntrySourceFile(entry: {
+  loc?: MetaLoc | MetaLoc[] | null;
+}): string | undefined {
   if (Array.isArray(entry.loc)) {
     return entry.loc[0]?.file;
   }
@@ -1874,11 +2175,17 @@ function getEntrySourceFile(entry: { loc?: MetaLoc | MetaLoc[] | null }): string
 }
 
 function toJsonPath(inputPath: string): string {
-  return path.join(path.dirname(inputPath), toJsonFileName(path.basename(inputPath)));
+  return path.join(
+    path.dirname(inputPath),
+    toJsonFileName(path.basename(inputPath)),
+  );
 }
 
 function toJsonRelativePath(relativePath: string): string {
-  return path.join(path.dirname(relativePath), toJsonFileName(path.basename(relativePath)));
+  return path.join(
+    path.dirname(relativePath),
+    toJsonFileName(path.basename(relativePath)),
+  );
 }
 
 function toJsonFileName(fileName: string): string {
