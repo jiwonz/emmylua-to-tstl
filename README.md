@@ -8,6 +8,8 @@ If your Lua development environment supports EmmyLua annotations, you can use th
 
 This allows you to write your Lua code with rich type information and have it available in TypeScript for better type checking and editor support.
 
+Basically, you can write your code in TypeScript if your Lua environment supports EmmyLua.
+
 ## Install
 
 Requires [`emmylua_doc_cli`](https://github.com/EmmyLuaLs/emmylua-analyzer-rust/releases) on `PATH`.
