@@ -2,6 +2,12 @@
 
 A simple CLI to generate TypeScript ambient declarations (.d.ts) from EmmyLua `.lua` metadata (and accompanying JSON produced by `emmylua_doc_cli`), useful alongside TypeScript→Lua toolchains such as [TSTL](https://typescripttolua.github.io/).
 
+## Why? What you can do with it?
+
+If your Lua development environment supports EmmyLua annotations, you can use this tool to generate TypeScript declaration files that can be consumed by TypeScript→Lua transpilers like TSTL.
+
+This allows you to write your Lua code with rich type information and have it available in TypeScript for better type checking and editor support.
+
 ## Install
 
 Requires [`emmylua_doc_cli`](https://github.com/EmmyLuaLs/emmylua-analyzer-rust/releases) on `PATH`.
