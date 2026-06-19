@@ -46,20 +46,21 @@ pnpm exec emmylua-to-tstl sample --include "**/core/*.lua" --exclude "**/test-*.
 
 - `--out <file>`: output `.d.ts` file (defaults to stdout)
 - `-o <file>`: short alias for `--out`
-- `--unresolved-type <mode>`: `strict|nonstrict|any|alias-any|any-bare|any-all` (default: `nonstrict`)
+- `--unresolved-type <mode>`: `strict|nonstrict|any|unknown|alias-any|any-bare|any-all` (default: `nonstrict`)
  - `--no-check`: Prefix generated .d.ts with `// @ts-nocheck` to disable TS checking.
  - `--out <file>`: output `.d.ts` file (defaults to stdout)
  - `-o <file>`: short alias for `--out`
  - `--out-dir <dir>`: emit one `.d.ts` per input `.lua` under `<dir>` (preserves relative paths)
  - `--include <glob>`: include only files matching the glob (may be repeated)
  - `--exclude <glob>`: exclude files matching the glob (may be repeated)
- - `--unresolved-type <mode>`: `strict|nonstrict|any|alias-any|any-bare|any-all` (default: `nonstrict`)
+ - `--unresolved-type <mode>`: `strict|nonstrict|any|unknown|alias-any|any-bare|any-all` (default: `nonstrict`)
 
 ## Unresolved type modes
 
 - `strict`: stop with an error if the source contains unresolved type names.
 - `nonstrict`: keep unresolved names as-is.
 - `any`: replace unresolved bare type names with `any`.
+- `unknown`: replace unresolved type names with `unknown` to force explicit narrowing or casting.
 - `alias-any`: keep unresolved names, then emit `declare type Name = any;` for them.
 - `any-bare`: same as `any` for bare unresolved names.
 - `any-all`: replace unresolved bare and qualified type names with `any`.

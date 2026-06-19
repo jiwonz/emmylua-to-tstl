@@ -22,6 +22,7 @@ export type UnresolvedTypeMode =
   | "strict"
   | "nonstrict"
   | "any"
+  | "unknown"
   | "alias-any"
   | "any-bare"
   | "any-all";
@@ -427,7 +428,7 @@ export async function generateDeclarations(
     );
     throw new Error(
       `Strict unresolved type check failed. Resolve these type names in source metadata: ${unresolvedList.join(", ")}\n` +
-        "If you still want to emit .d.ts, rerun with --unresolved-type nonstrict, any, any-bare, any-all, or alias-any.",
+        "If you still want to emit .d.ts, rerun with --unresolved-type nonstrict, any, any-bare, any-all, unknown, or alias-any.",
     );
   }
 
@@ -732,6 +733,7 @@ function parseArgs(argv: string[]): { help: boolean; options: CliOptions } {
         value !== "strict" &&
         value !== "nonstrict" &&
         value !== "any" &&
+        value !== "unknown" &&
         value !== "alias-any" &&
         value !== "any-bare" &&
         value !== "any-all"
@@ -792,7 +794,7 @@ function printHelp(): void {
 emmylua-to-tstl
 
 Usage:
-  emmylua-to-tstl <source>.lua|<source-dir> [--out <file>] [--unresolved-type <strict|nonstrict|any|alias-any|any-bare|any-all>]
+  emmylua-to-tstl <source>.lua|<source-dir> [--out <file>] [--unresolved-type <strict|nonstrict|any|unknown|alias-any|any-bare|any-all>]
 
 Options:
   --out, -o <path> Output .d.ts file path
@@ -801,7 +803,7 @@ Options:
   --exclude <glob>  Exclude files matching the glob (may be repeated)
   --unresolved-type <mode>
                   How to handle unresolved type names:
-                  strict | nonstrict (default) | any | alias-any | any-bare | any-all
+                  strict | nonstrict (default) | any | unknown | alias-any | any-bare | any-all
   --no-check      Prefix generated .d.ts with \`// @ts-nocheck\`
   -h, --help      Show this help message
 
@@ -810,6 +812,7 @@ Examples:
   emmylua-to-tstl sample/example_types.lua --out sample/example_types.d.ts
   emmylua-to-tstl sample --out sample/example_types.d.ts --unresolved-type strict
   emmylua-to-tstl sample --out sample/example_types.d.ts --unresolved-type alias-any
+  emmylua-to-tstl sample --out sample/example_types.d.ts --unresolved-type unknown
   emmylua-to-tstl sample --out sample/example_types.d.ts --unresolved-type any-bare
   emmylua-to-tstl sample --out sample/example_types.d.ts --unresolved-type any-all
 `);
@@ -1855,7 +1858,7 @@ function collectUnresolvedTypeNames(typeText: string): string {
     return typeText;
   }
 
-  if (context.mode === "any-all") {
+  if (context.mode === "any-all" || context.mode === "unknown") {
     return typeText.replace(
       QUALIFIED_UNRESOLVED_TYPE_RE,
       (match, name: string, offset: number, fullText: string) => {
@@ -1867,11 +1870,11 @@ function collectUnresolvedTypeNames(typeText: string): string {
         if (!context.warnedUnresolvedNames.has(name)) {
           context.warnedUnresolvedNames.add(name);
           context.warnings.push(
-            `Unresolved type '${name}' encountered; replaced with 'any' due to --unresolved-type any-all.`,
+            `Unresolved type '${name}' encountered; replaced with '${context.mode === "unknown" ? "unknown" : "any"}' due to --unresolved-type ${context.mode}.`,
           );
         }
 
-        return "any";
+        return context.mode === "unknown" ? "unknown" : "any";
       },
     );
   }
@@ -1885,14 +1888,14 @@ function collectUnresolvedTypeNames(typeText: string): string {
 
       context.unresolvedTypeNames.add(name);
 
-      if (context.mode === "any" || context.mode === "any-bare") {
+      if (context.mode === "any" || context.mode === "any-bare" || context.mode === "unknown") {
         if (!context.warnedUnresolvedNames.has(name)) {
           context.warnedUnresolvedNames.add(name);
           context.warnings.push(
-            `Unresolved bare type '${name}' encountered; replaced with 'any' due to --unresolved-type any.`,
+            `Unresolved bare type '${name}' encountered; replaced with '${context.mode === "unknown" ? "unknown" : "any"}' due to --unresolved-type ${context.mode}.`,
           );
         }
-        return "any";
+        return context.mode === "unknown" ? "unknown" : "any";
       }
 
       if (context.mode === "alias-any") {

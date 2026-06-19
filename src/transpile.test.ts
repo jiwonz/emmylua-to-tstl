@@ -235,6 +235,33 @@ test("any mode replaces unresolved bare types with any", {
   });
 });
 
+test("unknown mode replaces unresolved types with unknown", {
+  concurrency: false,
+}, async () => {
+  await withFixture(buildBaseDocument(), async (fixtureRoot) => {
+    const result = await generateDeclarations({
+      sourcePath: fixtureRoot,
+      jsonPath: undefined,
+      outPath: undefined,
+      unresolvedTypeMode: "unknown",
+    });
+
+    assert.ok(
+      result.text.includes(`declare class DemoClass {
+    private constructor();
+    serviceThing: unknown;
+    unknownValue: unknown;
+    static makeValue(this: void): DemoColor;
+    static makeValue(this: void, hex: string): DemoColor;
+}`),
+    );
+    assert.deepEqual(result.warnings, [
+      "Unresolved type 'DemoNamespace.DemoObject' encountered; replaced with 'unknown' due to --unresolved-type unknown.",
+      "Unresolved type 'MissingType' encountered; replaced with 'unknown' due to --unresolved-type unknown.",
+    ]);
+  });
+});
+
 test("any-all mode replaces qualified unresolved types with any", {
   concurrency: false,
 }, async () => {
@@ -276,7 +303,7 @@ test("any-bare matches bare-name fallback behavior", {
     assert.ok(result.text.includes("unknownValue: any;"));
     assert.equal(
       result.warnings[0],
-      "Unresolved bare type 'MissingType' encountered; replaced with 'any' due to --unresolved-type any.",
+      "Unresolved bare type 'MissingType' encountered; replaced with 'any' due to --unresolved-type any-bare.",
     );
   });
 });
