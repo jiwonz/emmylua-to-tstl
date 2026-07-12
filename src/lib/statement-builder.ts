@@ -157,7 +157,10 @@ export function buildStatementsForDocument(
         warnings.push(
           `Renamed invalid global identifier ${name} -> ${mangleTopLevelName(name)}`,
         );
-        const functionType = createFunctionTypeNodeFromFieldEntry(first, warnings);
+        const functionType = createFunctionTypeNodeFromFieldEntry(
+          first,
+          warnings,
+        );
         statements.push(
           createCustomNamedVariableStatement(
             mangleTopLevelName(name),
@@ -218,7 +221,9 @@ export function buildStatementsForDocument(
 
     if (isFunctionType(fieldEntry.typ)) {
       if (isValidTopLevelName(fieldEntry.name)) {
-        statements.push(buildFunctionDeclarationFromField(fieldEntry, warnings));
+        statements.push(
+          buildFunctionDeclarationFromField(fieldEntry, warnings),
+        );
       } else {
         const mangledName = mangleTopLevelName(fieldEntry.name);
         warnings.push(
@@ -237,7 +242,9 @@ export function buildStatementsForDocument(
     }
 
     if (isValidTopLevelName(fieldEntry.name)) {
-      statements.push(buildConstDeclaration(fieldEntry.name, fieldEntry, warnings));
+      statements.push(
+        buildConstDeclaration(fieldEntry.name, fieldEntry, warnings),
+      );
       continue;
     }
 
@@ -413,7 +420,9 @@ function buildEnumDeclaration(entry: MetaEnumEntry): ts.Statement {
   );
 }
 
-function buildHeritageClauses(bases: string[]): ts.HeritageClause[] | undefined {
+function buildHeritageClauses(
+  bases: string[],
+): ts.HeritageClause[] | undefined {
   if (bases.length === 0) {
     return undefined;
   }
@@ -421,12 +430,14 @@ function buildHeritageClauses(bases: string[]): ts.HeritageClause[] | undefined 
   return [
     ts.factory.createHeritageClause(
       ts.SyntaxKind.ExtendsKeyword,
-      bases.slice(0, 1).map((baseName) =>
-        ts.factory.createExpressionWithTypeArguments(
-          ts.factory.createIdentifier(baseName),
-          undefined,
+      bases
+        .slice(0, 1)
+        .map((baseName) =>
+          ts.factory.createExpressionWithTypeArguments(
+            ts.factory.createIdentifier(baseName),
+            undefined,
+          ),
         ),
-      ),
     ),
   ];
 }
@@ -470,7 +481,9 @@ function buildMethodDeclaration(
     signature.typeParameters.length > 0 ? signature.typeParameters : undefined;
 
   return ts.factory.createMethodDeclaration(
-    isStatic ? [ts.factory.createModifier(ts.SyntaxKind.StaticKeyword)] : undefined,
+    isStatic
+      ? [ts.factory.createModifier(ts.SyntaxKind.StaticKeyword)]
+      : undefined,
     undefined,
     toPropertyName(entry.name),
     undefined,
@@ -565,7 +578,11 @@ function buildFunctionDeclarationFromField(
     throw new Error(`Expected function type for ${entry.name}`);
   }
 
-  const signature = buildFunctionSignatureFromTypeText(entry.typ, warnings, true);
+  const signature = buildFunctionSignatureFromTypeText(
+    entry.typ,
+    warnings,
+    true,
+  );
 
   return ts.factory.createFunctionDeclaration(
     [ts.factory.createModifier(ts.SyntaxKind.DeclareKeyword)],
@@ -713,7 +730,9 @@ function getLine(entry: { loc?: MetaLoc | MetaLoc[] | null }): number {
   return entry.loc?.line ?? Number.POSITIVE_INFINITY;
 }
 
-function groupByName<T extends { name: string }>(entries: T[]): Map<string, T[]> {
+function groupByName<T extends { name: string }>(
+  entries: T[],
+): Map<string, T[]> {
   const groups = new Map<string, T[]>();
 
   for (const entry of entries) {

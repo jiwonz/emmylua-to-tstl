@@ -20,7 +20,9 @@ async function createFixture(
     path.join(os.tmpdir(), "emmylua-to-tstl-test-"),
   );
   const metaPath = path.join(fixtureRoot, fileName);
-  const jsonPath = metaPath.replace(/\.meta\.lua$/i, ".json").replace(/\.lua$/i, ".json");
+  const jsonPath = metaPath
+    .replace(/\.meta\.lua$/i, ".json")
+    .replace(/\.lua$/i, ".json");
 
   await writeFile(metaPath, "---@meta\n", "utf8");
   await writeFile(jsonPath, JSON.stringify(document, null, 2), "utf8");
@@ -28,12 +30,18 @@ async function createFixture(
   return fixtureRoot;
 }
 
-async function createDirectoryFixture(files: Array<{ filePath: string; document: TestMetaDocument }>): Promise<string> {
-  const fixtureRoot = await mkdtemp(path.join(os.tmpdir(), "emmylua-to-tstl-test-"));
+async function createDirectoryFixture(
+  files: Array<{ filePath: string; document: TestMetaDocument }>,
+): Promise<string> {
+  const fixtureRoot = await mkdtemp(
+    path.join(os.tmpdir(), "emmylua-to-tstl-test-"),
+  );
 
   for (const file of files) {
     const metaPath = path.join(fixtureRoot, file.filePath);
-    const jsonPath = metaPath.replace(/\.meta\.lua$/i, ".json").replace(/\.lua$/i, ".json");
+    const jsonPath = metaPath
+      .replace(/\.meta\.lua$/i, ".json")
+      .replace(/\.lua$/i, ".json");
     await mkdir(path.dirname(metaPath), { recursive: true });
     await writeFile(metaPath, "---@meta\n", "utf8");
     await writeFile(jsonPath, JSON.stringify(file.document, null, 2), "utf8");
@@ -335,14 +343,34 @@ test("collectMetaFiles walks nested lua files in a directory", {
     const nestedDir = path.join(fixtureRoot, "lsp-meta", "ko");
     await mkdir(nestedDir, { recursive: true });
     await writeFile(path.join(nestedDir, "nested.lua"), "---@meta\n", "utf8");
-    await writeFile(path.join(nestedDir, "nested.json"), JSON.stringify(buildSecondaryDocument(), null, 2), "utf8");
-    await writeFile(path.join(nestedDir, "nested-meta.meta.lua"), "---@meta\n", "utf8");
-    await writeFile(path.join(nestedDir, "nested-meta.json"), JSON.stringify(buildSecondaryDocument(), null, 2), "utf8");
+    await writeFile(
+      path.join(nestedDir, "nested.json"),
+      JSON.stringify(buildSecondaryDocument(), null, 2),
+      "utf8",
+    );
+    await writeFile(
+      path.join(nestedDir, "nested-meta.meta.lua"),
+      "---@meta\n",
+      "utf8",
+    );
+    await writeFile(
+      path.join(nestedDir, "nested-meta.json"),
+      JSON.stringify(buildSecondaryDocument(), null, 2),
+      "utf8",
+    );
 
     const files = await collectMetaFiles(fixtureRoot);
     assert.deepEqual(
-      files.map((file) => path.relative(fixtureRoot, file).split(path.sep).join("/")).sort(),
-      ["fixture.lua", "lsp-meta/ko/nested-meta.meta.lua", "lsp-meta/ko/nested.lua"],
+      files
+        .map((file) =>
+          path.relative(fixtureRoot, file).split(path.sep).join("/"),
+        )
+        .sort(),
+      [
+        "fixture.lua",
+        "lsp-meta/ko/nested-meta.meta.lua",
+        "lsp-meta/ko/nested.lua",
+      ],
     );
   });
 });
@@ -350,29 +378,40 @@ test("collectMetaFiles walks nested lua files in a directory", {
 test("direct .meta.lua input is accepted and generates declarations", {
   concurrency: false,
 }, async () => {
-  await withFixture(buildBaseDocument(), async (fixtureRoot) => {
-    const result = await generateDeclarations({
-      sourcePath: path.join(fixtureRoot, "fixture.meta.lua"),
-      jsonPath: undefined,
-      outPath: undefined,
-      unresolvedTypeMode: "nonstrict",
-    });
+  await withFixture(
+    buildBaseDocument(),
+    async (fixtureRoot) => {
+      const result = await generateDeclarations({
+        sourcePath: path.join(fixtureRoot, "fixture.meta.lua"),
+        jsonPath: undefined,
+        outPath: undefined,
+        unresolvedTypeMode: "nonstrict",
+      });
 
-    assert.ok(result.text.includes("declare class DemoClass"));
-    assert.ok(result.text.includes("unknownValue: MissingType;"));
-  }, "fixture.meta.lua");
+      assert.ok(result.text.includes("declare class DemoClass"));
+      assert.ok(result.text.includes("unknownValue: MissingType;"));
+    },
+    "fixture.meta.lua",
+  );
 });
 
 test("directory input with -o out writes a combined d.ts file", {
   concurrency: false,
 }, async () => {
   const fixtureRoot = await createDirectoryFixture([
-    { filePath: path.join("lsp-meta", "ko", "DemoNamespace.lua"), document: buildBaseDocument() },
+    {
+      filePath: path.join("lsp-meta", "ko", "DemoNamespace.lua"),
+      document: buildBaseDocument(),
+    },
   ]);
   const outFile = path.join(fixtureRoot, "generated", "definitions.d.ts");
 
   try {
-    const exitCode = await runCli([path.join(fixtureRoot, "lsp-meta", "ko"), "-o", outFile]);
+    const exitCode = await runCli([
+      path.join(fixtureRoot, "lsp-meta", "ko"),
+      "-o",
+      outFile,
+    ]);
     assert.equal(exitCode, 0);
 
     const text = await readFile(outFile, "utf8");
@@ -409,7 +448,10 @@ test("qualified declarations emit namespaces", {
   concurrency: false,
 }, async () => {
   const fixtureRoot = await createDirectoryFixture([
-    { filePath: "DemoFramework.meta.lua", document: buildQualifiedNamespaceDocument() },
+    {
+      filePath: "DemoFramework.meta.lua",
+      document: buildQualifiedNamespaceDocument(),
+    },
   ]);
   const outDir = path.join(fixtureRoot, "generated");
 
@@ -417,7 +459,10 @@ test("qualified declarations emit namespaces", {
     const exitCode = await runCli([fixtureRoot, "-o", outDir]);
     assert.equal(exitCode, 0);
 
-    const text = await readFile(path.join(outDir, "DemoFramework.d.ts"), "utf8");
+    const text = await readFile(
+      path.join(outDir, "DemoFramework.d.ts"),
+      "utf8",
+    );
     assert.ok(text.includes("declare namespace DemoFramework"));
     assert.ok(text.includes("export enum AnimatorUpdateMode"));
     assert.ok(text.includes("Normal = 0"));

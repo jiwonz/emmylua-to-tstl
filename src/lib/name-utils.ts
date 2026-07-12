@@ -30,7 +30,9 @@ export function toValidParameterName(name: string): string {
     : `_${name.replace(/[^A-Za-z0-9_]/g, "_")}`;
 }
 
-export function shouldEmitThisVoidParameter(entry: { is_meth?: boolean }): boolean {
+export function shouldEmitThisVoidParameter(entry: {
+  is_meth?: boolean;
+}): boolean {
   return entry.is_meth !== true;
 }
 

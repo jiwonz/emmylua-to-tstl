@@ -71,7 +71,11 @@ export function createFunctionTypeNodeFromFieldEntry(
     throw new Error(`Expected function type for ${entry.name}`);
   }
 
-  const signature = buildFunctionSignatureFromTypeText(entry.typ, warnings, true);
+  const signature = buildFunctionSignatureFromTypeText(
+    entry.typ,
+    warnings,
+    true,
+  );
 
   return ts.factory.createFunctionTypeNode(
     signature.typeParameters.length > 0 ? signature.typeParameters : undefined,
@@ -80,7 +84,10 @@ export function createFunctionTypeNodeFromFieldEntry(
   );
 }
 
-export function normalizeLuaTypeText(typeText: string, warnings: string[]): string {
+export function normalizeLuaTypeText(
+  typeText: string,
+  warnings: string[],
+): string {
   const trimmed = typeText.trim();
 
   if (trimmed.startsWith("fun")) {
@@ -164,9 +171,14 @@ export function isFunctionType(typeText: string | undefined): boolean {
   return typeText?.trim().startsWith("fun") ?? false;
 }
 
-export function buildFieldTypeNode(typeText: string, warnings: string[]): ts.TypeNode {
+export function buildFieldTypeNode(
+  typeText: string,
+  warnings: string[],
+): ts.TypeNode {
   if (isFunctionType(typeText)) {
-    return createTypeNodeFromText(normalizeFunctionTypeText(typeText, warnings));
+    return createTypeNodeFromText(
+      normalizeFunctionTypeText(typeText, warnings),
+    );
   }
 
   return createTypeNodeFromText(typeText);
@@ -195,14 +207,18 @@ function buildTypeParameterDeclaration(
   );
 }
 
-function buildParameterDeclaration(param: MetaFnParam): ts.ParameterDeclaration {
+function buildParameterDeclaration(
+  param: MetaFnParam,
+): ts.ParameterDeclaration {
   const cleanedName = param.name.replace(/\?$/, "");
   const isRest = cleanedName.startsWith("...");
   const identifier = isRest ? cleanedName.slice(3) || "args" : cleanedName;
   const typeNode = param.typ
     ? createTypeNodeFromText(param.typ)
     : ts.factory.createKeywordTypeNode(ts.SyntaxKind.AnyKeyword);
-  const finalTypeNode = isRest ? ts.factory.createArrayTypeNode(typeNode) : typeNode;
+  const finalTypeNode = isRest
+    ? ts.factory.createArrayTypeNode(typeNode)
+    : typeNode;
 
   return ts.factory.createParameterDeclaration(
     undefined,
@@ -330,7 +346,9 @@ function buildParameterFromFunctionTypeParam(
     undefined,
     undefined,
     ts.factory.createIdentifier(toValidParameterName(name)),
-    isOptional ? ts.factory.createToken(ts.SyntaxKind.QuestionToken) : undefined,
+    isOptional
+      ? ts.factory.createToken(ts.SyntaxKind.QuestionToken)
+      : undefined,
     createTypeNodeFromText(normalizeLuaTypeText(rawType, warnings)),
     undefined,
   );

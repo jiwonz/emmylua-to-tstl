@@ -26,7 +26,7 @@ import type {
 
 const execFile = promisify(_execFile);
 
-export type { CliOptions, UnresolvedTypeMode, GenerationResult };
+export type { CliOptions, GenerationResult, UnresolvedTypeMode };
 export { collectMetaFiles };
 
 export async function runCli(argv: string[]): Promise<number> {
@@ -135,7 +135,12 @@ export async function generateDeclarations(
   try {
     statements.push(
       ...documents.flatMap(({ metaFile, document }) =>
-        buildStatementsForDocument(metaFile, document, warnings, knownTypeNames),
+        buildStatementsForDocument(
+          metaFile,
+          document,
+          warnings,
+          knownTypeNames,
+        ),
       ),
     );
   } finally {
@@ -226,7 +231,14 @@ export async function generateDeclarationsPerFile(
 
     const statements: ts.Statement[] = [];
     try {
-      statements.push(...buildStatementsForDocument(metaFile, document, warnings, knownTypeNames));
+      statements.push(
+        ...buildStatementsForDocument(
+          metaFile,
+          document,
+          warnings,
+          knownTypeNames,
+        ),
+      );
     } finally {
       setActiveTypeResolutionContext(undefined);
     }
@@ -429,7 +441,9 @@ async function loadDocuments(options: {
   jsonPath: string | undefined;
   cliExecTarget: string;
 }): Promise<LoadedDocument[]> {
-  const jsonRoot = options.jsonPath ? path.resolve(options.jsonPath) : undefined;
+  const jsonRoot = options.jsonPath
+    ? path.resolve(options.jsonPath)
+    : undefined;
   let effectiveJsonRoot: string | undefined = jsonRoot;
   let generatedJsonPath: string | undefined;
 
@@ -450,7 +464,13 @@ async function loadDocuments(options: {
       try {
         await execFile(
           "emmylua_doc_cli",
-          ["--output-format", "json", "--output", tmpDir, options.cliExecTarget],
+          [
+            "--output-format",
+            "json",
+            "--output",
+            tmpDir,
+            options.cliExecTarget,
+          ],
           {
             cwd: options.sourceRoot,
           },
@@ -458,7 +478,8 @@ async function loadDocuments(options: {
         effectiveJsonRoot = tmpDir;
         generatedJsonPath = path.join(tmpDir, "doc.json");
       } catch (error: unknown) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
         throw new Error(
           `Could not generate JSON via 'emmylua_doc_cli': ${errorMessage}. ` +
             "Install 'emmylua_doc_cli' or provide pre-generated JSON via --json <path>.",

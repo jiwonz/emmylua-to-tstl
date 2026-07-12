@@ -216,7 +216,10 @@ async function findJsonFileByBaseName(
   return undefined;
 }
 
-async function walkDirectory(directory: string, files: string[]): Promise<void> {
+async function walkDirectory(
+  directory: string,
+  files: string[],
+): Promise<void> {
   for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
     const resolved = path.join(directory, entry.name);
     if (entry.isDirectory()) {
