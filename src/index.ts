@@ -1,9 +1,11 @@
-#!/usr/bin/env node
-
-import { runCli } from "./transpile.js";
-
-runCli(process.argv.slice(2)).catch((error: unknown) => {
-  const message = error instanceof Error ? error.message : String(error);
-  process.stderr.write(`${message}\n`);
-  process.exitCode = 1;
-});
+export {
+  collectMetaFiles,
+  generateDeclarations,
+  generateDeclarationsPerFile,
+  runCli,
+} from "./transpile.js";
+export type {
+  CliOptions,
+  GenerationResult,
+  UnresolvedTypeMode,
+} from "./transpile.js";

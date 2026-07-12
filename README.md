@@ -2,6 +2,8 @@
 
 A simple CLI to generate TypeScript ambient declarations (.d.ts) from EmmyLua `.lua` metadata (and accompanying JSON produced by `emmylua_doc_cli`), useful alongside TypeScript→Lua toolchains such as [TSTL](https://typescripttolua.github.io/).
 
+This package can also be used directly as a JavaScript/TypeScript library.
+
 ## Why? What you can do with it?
 
 If your Lua development environment supports EmmyLua annotations, you can use this tool to generate TypeScript declaration files that can be consumed by TypeScript→Lua transpilers like TSTL.
@@ -33,6 +35,90 @@ pnpm exec emmylua-to-tstl sample --out typings/example_types.d.ts --unresolved-t
 # same output flag using the short alias
 pnpm exec emmylua-to-tstl sample -o typings/example_types.d.ts
 ```
+
+## Library usage (JS/TS)
+
+```ts
+import {
+	collectMetaFiles,
+	generateDeclarations,
+	generateDeclarationsPerFile,
+} from "emmylua-to-tstl";
+
+const files = await collectMetaFiles("sample");
+
+const combined = await generateDeclarations({
+	sourcePath: "sample",
+	jsonPath: undefined,
+	outPath: undefined,
+	unresolvedTypeMode: "nonstrict",
+});
+
+const perFile = await generateDeclarationsPerFile({
+	sourcePath: "sample",
+	jsonPath: undefined,
+	outPath: undefined,
+	outDir: "typings",
+	unresolvedTypeMode: "nonstrict",
+});
+
+console.log(files.length, combined.warnings.length, perFile.length);
+```
+
+## API reference
+
+### `collectMetaFiles(inputPath, includePatterns?, excludePatterns?)`
+
+Discover `.lua` metadata files from a single file path or by recursively scanning a directory.
+
+- `inputPath: string`: Source file or directory.
+- `includePatterns?: string[]`: Optional glob filters to include only matching relative paths.
+- `excludePatterns?: string[]`: Optional glob filters to remove matching relative paths.
+
+Returns: `Promise<string[]>` sorted absolute file paths.
+
+### `generateDeclarations(options)`
+
+Generate one combined declaration output from all discovered inputs.
+
+- `options.sourcePath: string`: Source file or directory.
+- `options.jsonPath?: string`: Optional JSON file or JSON root directory.
+- `options.outPath?: string`: Optional output file path (used by CLI flows).
+- `options.outDir?: string`: Optional output directory (used by CLI flows).
+- `options.includePatterns?: string[]`: Optional include globs.
+- `options.excludePatterns?: string[]`: Optional exclude globs.
+- `options.unresolvedTypeMode?`: Handling mode for unresolved types.
+- `options.noCheck?: boolean`: Add `// @ts-nocheck` to generated output.
+
+Returns: `Promise<{ text: string; warnings: string[] }>`.
+
+### `generateDeclarationsPerFile(options)`
+
+Generate one declaration output per source `.lua` file.
+
+Uses the same `options` shape as `generateDeclarations`.
+
+Returns: `Promise<Array<{ relativePath: string; text: string; warnings: string[] }>>`.
+
+### `runCli(argv)`
+
+Programmatic CLI entrypoint if you want CLI behavior from code.
+
+- `argv: string[]`: CLI arguments (equivalent to `process.argv.slice(2)`).
+
+Returns: `Promise<number>` exit code.
+
+### `UnresolvedTypeMode`
+
+Allowed values:
+
+- `strict`
+- `nonstrict` (default)
+- `any`
+- `unknown`
+- `alias-any`
+- `any-bare`
+- `any-all`
 
 ```bash
 # emit one .d.ts per input `.lua` under `dist/typings`
