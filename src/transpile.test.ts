@@ -472,3 +472,42 @@ test("qualified declarations emit namespaces", {
     await rm(fixtureRoot, { recursive: true, force: true });
   }
 });
+
+test("reserved global identifiers are mangled for field declarations", {
+  concurrency: false,
+}, async () => {
+  const fixtureRoot = await createDirectoryFixture([
+    {
+      filePath: "keywords.meta.lua",
+      document: {
+        types: [],
+        globals: [
+          {
+            type: "field",
+            name: "typeof",
+            typ: "number",
+          },
+        ],
+      },
+    },
+  ]);
+
+  try {
+    const result = await generateDeclarations({
+      sourcePath: fixtureRoot,
+      jsonPath: undefined,
+      outPath: undefined,
+      unresolvedTypeMode: "nonstrict",
+    });
+
+    assert.ok(result.text.includes("declare const typeof_: number;"));
+    assert.ok(result.text.includes("@customName typeof"));
+    assert.ok(
+      result.warnings.includes(
+        "Renamed invalid global identifier typeof -> typeof_",
+      ),
+    );
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+  }
+});

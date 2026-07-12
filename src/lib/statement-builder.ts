@@ -172,7 +172,23 @@ export function buildStatementsForDocument(
       continue;
     }
 
-    statements.push(buildConstDeclaration(name, first, warnings));
+    if (isValidTopLevelName(name)) {
+      statements.push(buildConstDeclaration(name, first, warnings));
+      continue;
+    }
+
+    const mangledName = mangleTopLevelName(name);
+    warnings.push(
+      `Renamed invalid global identifier ${name} -> ${mangledName}`,
+    );
+    statements.push(
+      buildConstDeclaration(
+        mangledName,
+        { ...first, name: mangledName },
+        warnings,
+        name,
+      ),
+    );
   }
 
   const functionGroups = groupByName(topLevelFns);
