@@ -1,6 +1,6 @@
 {
   "name": "emmylua-to-tstl",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "A simple CLI to generate TypeScript ambient declarations (.d.ts) from EmmyLua `.meta.lua` metadata, useful alongside TypeScript→Lua toolchains such as TSTL",
   "type": "module",
   "license": "MIT",
